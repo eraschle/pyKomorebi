@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "pykomorebi"
+version = "0.1.0"
+description = "Komorebi API generator"
+authors = ["Erich Raschle <erich.raschle@rsrg.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+
+[tool.poetry.group.dev.dependencies]
+pyright = "^1.1.390"
+ruff-lsp = "^0.0.59"
+ruff = "^0.8.2"
+pytest = "^8.3.4"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

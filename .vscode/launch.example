@@ -1,0 +1,17 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "<NAME>",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pyKomorebi",
+            "args": [
+                "--import-path", "<PATH>",
+                "--extension", "<EXTENSION>",
+                "--language", "<LANGUAGE>",
+                "--export-path", "<EXPORT_PATH>"
+            ]
+        }
+    ]
+}
