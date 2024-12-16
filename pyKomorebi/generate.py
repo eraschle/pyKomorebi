@@ -1,21 +1,11 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from pyKomorebi import factory
 from pyKomorebi.factory import IFactory
 from pyKomorebi import generator
-from pyKomorebi.generator import ICodeGenerator
+from pyKomorebi.generator import ICodeGenerator, Options
 from pyKomorebi.model import ApiCommand
-
-
-@dataclass
-class Options:
-    import_path: Path
-    import_extension: str
-
-    language: str
-    export_path: Optional[Path] = None
 
 
 @dataclass
@@ -33,10 +23,6 @@ class GeneratorOptions:
         if self.options.export_path is None:
             raise ValueError("export_path is not set")
         return self.options.export_path
-
-    @property
-    def language(self) -> str:
-        return self.options.language
 
     def doc_file_path(self) -> list[Path]:
         paths = list(self.options.import_path.rglob(f"*{self.options.import_extension}"))
@@ -72,22 +58,22 @@ def _generate(doc_path: Path, options: GeneratorOptions) -> list[str]:
 
     if options.export_per_command():
         export_path = options.export_path_for(command)
-        code_lines = options.generator.create_content(code_lines)
+        code_lines = options.generator.pre_generator(code_lines)
         with open(export_path, "w") as export_file:
             export_file.write("\n".join(code_lines))
     return code_lines
 
 
-def _get_generator_options(options: Options) -> GeneratorOptions:
+def _get_generator_options(language: str, options: Options) -> GeneratorOptions:
     return GeneratorOptions(
         options=options,
-        generator=generator.get(options.language),
+        generator=generator.get(language=language, options=options),
         factory=factory.get(options.import_extension),
     )
 
 
-def generate_from_path(options: Options) -> list[str]:
-    gen_options = _get_generator_options(options)
+def generate_from_path(language: str, options: Options) -> list[str]:
+    gen_options = _get_generator_options(language=language, options=options)
     empty_lines = ["", ""]
     commands = []
     for doc_path in gen_options.doc_file_path():
@@ -95,7 +81,8 @@ def generate_from_path(options: Options) -> list[str]:
         commands.extend(code_lines)
         commands.extend(empty_lines)
     if gen_options.export_one_file():
-        commands = gen_options.generator.create_content(commands)
+        commands = gen_options.generator.pre_generator(commands)
+        commands = gen_options.generator.post_generator(commands)
         with open(gen_options.export_path, "w") as export_file:
             export_file.write("\n".join(commands))
     return commands

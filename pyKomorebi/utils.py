@@ -27,6 +27,15 @@ def clean_none_or_empty(lines: list[str], strip: bool = False) -> list[str]:
     return lines
 
 
+def replace_double_quotes(lines: list[str]) -> list[str]:
+    changed = []
+    for line in lines:
+        if '"' in line and not line.startswith('"') and not line.endswith('"'):
+            line = line.replace('"', "'")
+        changed.append(line)
+    return changed
+
+
 def concat_values(values: list[str], max_length: int, separator: str) -> list[str]:
     concat_values = []
     current = ""

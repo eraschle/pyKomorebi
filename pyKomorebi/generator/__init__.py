@@ -1,21 +1,34 @@
 from functools import cache
 from abc import ABC, abstractmethod
-from typing import Protocol
+from dataclasses import dataclass
+from typing import Protocol, Optional
+from pathlib import Path
 
 from pyKomorebi.model import ApiCommand
+
+
+@dataclass(frozen=True)
+class Options:
+    import_path: Path
+    import_extension: str
+
+    export_path: Optional[Path] = None
 
 
 class ICodeGenerator(Protocol):
     @property
     def extension(self) -> str: ...
 
-    def create_content(self, code_lines: list[str]) -> list[str]: ...
+    def pre_generator(self, code_lines: list[str]) -> list[str]: ...
 
     def generate(self, command: ApiCommand) -> list[str]: ...
 
+    def post_generator(self, code_lines: list[str]) -> list[str]: ...
+
 
 class AGenerator(ABC, ICodeGenerator):
-    def __init__(self, extension: str, indent: str):
+    def __init__(self, options: Options, extension: str, indent: str):
+        self.options = options
         self._extension = extension
         self.indent = indent
 
@@ -35,13 +48,13 @@ class AGenerator(ABC, ICodeGenerator):
 
 
 @cache
-def get(language: str) -> ICodeGenerator:
+def get(language: str, options: Options) -> ICodeGenerator:
     if language == "ahk":
         from pyKomorebi.generator import ahk
 
-        return ahk.AutoHotKeyGenerator()
+        return ahk.AutoHotKeyGenerator(options)
     if language == "lisp":
         from pyKomorebi.generator import lisp
 
-        return lisp.LispGenerator()
+        return lisp.LispGenerator(options)
     raise ValueError("Unsupported language {}".format(language))

@@ -1,12 +1,12 @@
-from pyKomorebi.generator import AGenerator
+from pyKomorebi.generator import AGenerator, Options
 from pyKomorebi.model import ApiCommand, CommandOption, CommandArgument
 
 
 class AutoHotKeyGenerator(AGenerator):
     name_replacement = [" ", "-"]
 
-    def __init__(self):
-        super().__init__(extension="ahk", indent="  ")
+    def __init__(self, options: Options):
+        super().__init__(options=options, extension="ahk", indent="  ")
 
     def _ahk_name(self, name: str, separator: str, capitalize: bool) -> str:
         names = name.split("-")
@@ -59,7 +59,7 @@ class AutoHotKeyGenerator(AGenerator):
         cmd = command.name if len(command.arguments) == 0 else f"{command.name} "
         return f'RunWait("komorebic.exe {cmd}"{args}{options}, , "Hide")'
 
-    def create_content(self, code_lines: list[str]) -> list[str]:
+    def pre_generator(self, code_lines: list[str]) -> list[str]:
         lines = ["#Requires AutoHotkey v2.0.2", ""]
         lines.extend(code_lines)
         return lines
@@ -72,3 +72,6 @@ class AutoHotKeyGenerator(AGenerator):
         lines.append(self._line(self._command_call(command), level=1))
         lines.append(self._line("}", level=0))
         return lines
+
+    def post_generator(self, code_lines: list[str]) -> list[str]:
+        return code_lines
