@@ -28,6 +28,18 @@ def test_option_pattern_short():
     assert long_option is None
 
 
+OPTION_ARG_VALUE = """ -c, --config <CONFIG>
+          Path to a static configuration JSON file"""
+
+
+def test_options_with_argument():
+    matched = markdown.OPTION_PATTERN.match(OPTION_ARG_VALUE)
+    assert matched is not None
+    assert matched.group("short") == "-c"
+    assert matched.group("name") == "--config"
+    assert matched.group("arg") == "<CONFIG>"
+
+
 def test_default_value():
     matched = markdown.DEFAULT_PATTERN.match("          [default: single]")
     assert matched is not None

@@ -1,8 +1,16 @@
+import re
 from typing import Any
 
 
+def strip_value(value):
+    if value is None:
+        return ""
+    return value.strip()
+
+
 def strip_lines(lines: list[str]) -> list[str]:
-    return [line.strip() for line in lines]
+    values = [strip_value(line) for line in lines]
+    return [value for value in values if len(value) > 0]
 
 
 def is_none_or_empty(line: Any) -> bool:
@@ -36,29 +44,32 @@ def replace_double_quotes(lines: list[str]) -> list[str]:
     return changed
 
 
-def concat_values(values: list[str], max_length: int, separator: str) -> list[str]:
-    concat_values = []
-    current = ""
-    for value in strip_lines(values):
-        if len(value) == 0:
+def _clean_pattern_in(line: str, patterns: list[re.Pattern]) -> str:
+    for pattern in patterns:
+        match = pattern.findall(line)
+        if match is None:
             continue
-        if len(current) > 0:
-            value = f"{separator}{value}"
-        if len(current) + len(value) <= max_length:
-            current += value
-        else:
-            concat_values.append(current)
-            current = value.removeprefix(separator).strip()
-    concat_values.append(current)
-    return concat_values
+        for replace in match:
+            line = line.replace(replace, "")
+    return line
 
 
-def ensure_max_length(lines: list[str], max_length: int, split: str) -> list[str]:
-    ensure_max_length = []
-    for line in clean_none_or_empty(lines, strip=True):
-        if len(line) <= max_length:
-            ensure_max_length.append(line)
-            continue
-        split_lines = concat_values(line.split(split), max_length, split)
-        ensure_max_length.extend(split_lines)
-    return ensure_max_length
+def clean_pattern_in(lines: list[str], patterns: list[re.Pattern]) -> list[str]:
+    changed = []
+    for line in lines:
+        changed.append(_clean_pattern_in(line, patterns))
+    return changed
+
+
+def as_string(*values: str, separator: str) -> str:
+    if len(values) == 0:
+        return ""
+    if len(values) == 1:
+        return values[0]
+    return separator.join([value for value in values if len(value) > 0])
+
+
+def lines_as_str(*values: str) -> str:
+    if len(values) == 0:
+        return ""
+    return as_string(*values, separator="\n")

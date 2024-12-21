@@ -1,12 +1,33 @@
-from pyKomorebi.generator import AGenerator, Options
-from pyKomorebi.model import ApiCommand, CommandOption, CommandArgument
+from typing import Iterable, Unpack
+
+from pyKomorebi.creator.code import ACodeCreator, ACodeFormatter
+from pyKomorebi.generate import GeneratorArgs
+from pyKomorebi.model import ApiCommand, CommandArgument, CommandOption
 
 
-class AutoHotKeyGenerator(AGenerator):
+class AHKCodeFormatter(ACodeFormatter):
+    def __init__(self):
+        super().__init__(indent="  ", max_length=80)
+
+    def function_name(self, name: str, private: bool = False) -> str:
+        raise NotImplementedError
+
+    def concat_args(self, args: list[str]) -> str:
+        raise NotImplementedError
+
+    def name_to_doc(self, name: str, **kw) -> str:
+        raise NotImplementedError
+
+    def name_to_code(self, name: str) -> str:
+        raise NotImplementedError
+
+
+class AutoHotKeyCreator(ACodeCreator):
     name_replacement = [" ", "-"]
 
-    def __init__(self, options: Options):
-        super().__init__(options=options, extension="ahk", indent="  ")
+    def __init__(self):
+        super().__init__(extension="ahk")
+        self.formatter = AHKCodeFormatter()
 
     def _ahk_name(self, name: str, separator: str, capitalize: bool) -> str:
         names = name.split("-")
@@ -20,8 +41,8 @@ class AutoHotKeyGenerator(AGenerator):
         names = ["Komorebi", self._ahk_name(command.name, separator="", capitalize=True)]
         return "".join(names)
 
-    def _opt_name(self, arg: CommandOption, with_dash: bool) -> str:
-        name = arg.full_name(with_default=False)
+    def _opt_name(self, arg: CommandOption, with_dash: bool, **kwargs: Unpack[GeneratorArgs]) -> str:
+        name = arg.get_name(kwargs["with_default"])
         if arg.name is not None:
             name = arg.name
         name = self._ahk_name(name.removeprefix("--"), separator="_", capitalize=False)
@@ -38,7 +59,7 @@ class AutoHotKeyGenerator(AGenerator):
         return options
 
     def _arg_name(self, arg: CommandArgument) -> str:
-        name = arg.full_name(with_default=False)
+        name = arg.get_name(with_default=False)
         return self._ahk_name(name, separator="_", capitalize=False)
 
     def _arguments_names(self, command: ApiCommand) -> list[str]:
@@ -59,19 +80,28 @@ class AutoHotKeyGenerator(AGenerator):
         cmd = command.name if len(command.arguments) == 0 else f"{command.name} "
         return f'RunWait("komorebic.exe {cmd}"{args}{options}, , "Hide")'
 
-    def pre_generator(self, code_lines: list[str]) -> list[str]:
+    def pre_generator(self) -> list[str]:
         lines = ["#Requires AutoHotkey v2.0.2", ""]
-        lines.extend(code_lines)
+        lines.extend(self.formatter.empty_line())
         return lines
 
-    def generate(self, command: ApiCommand) -> list[str]:
+    def _generate_command(self, command: ApiCommand) -> list[str]:
         lines = []
         func_args = self._arguments(command)
         func_name = self._function_name(command)
-        lines.append(self._line(f'{func_name}({func_args})' + " {", level=0))
-        lines.append(self._line(self._command_call(command), level=1))
-        lines.append(self._line("}", level=0))
+        lines.append(self.formatter.indent(f'{func_name}({func_args})' + " {", level=0))
+        lines.append(self.formatter.indent(self._command_call(command), level=1))
+        lines.append(self.formatter.indent("}", level=0))
+        lines.extend(self.formatter.empty_line())
         return lines
 
-    def post_generator(self, code_lines: list[str]) -> list[str]:
-        return code_lines
+    def post_generator(self) -> list[str]:
+        return []
+
+    def generate(self, commands: Iterable[ApiCommand]) -> list[str]:
+        lines = []
+        for command in commands:
+            lines.extend(self.pre_generator())
+            lines.extend(self._generate_command(command))
+            lines.extend(self.post_generator())
+        return lines

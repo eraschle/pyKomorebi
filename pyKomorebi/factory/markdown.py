@@ -3,17 +3,20 @@ import itertools
 from pathlib import Path
 from typing import Optional, Any
 
+
 from pyKomorebi import utils
 from pyKomorebi.model import ApiCommand, CommandOption, CommandArgument
 
 
 CLEANUP_LINES = ["```"]
 
+USAGE_LINE = "Usage:"
+
 ARGUMENT_LINE = "Arguments:"
-ARGS_PATTERN = re.compile(r"\s*<(?P<name>\w+)>")
+ARGS_PATTERN = re.compile(r"\s*(?P<name><\w+>)")
 
 OPTION_LINE = "Options:"
-OPTION_PATTERN = re.compile(r"\s*(?P<short>-\w+)?(?:[,\s]*(?P<name>--\w+))?")
+OPTION_PATTERN = re.compile(r"\s*(?P<short>-\w+)?(?:[,\s]*(?P<name>--\w+))?\s*(?P<arg><.*>)?")
 
 DEFAULT_PATTERN = re.compile(r".*(?P<complete>\[default:\s*(?P<default>\w*)\])", re.DOTALL)
 POSSIBLE_PATTERN = re.compile(r".*(?P<complete>\[possible values:\s*(?P<values>.*)\])", re.DOTALL)
@@ -70,6 +73,13 @@ def _get_cmd_name(path: Path, doc_lines: list[str]) -> str:
     return cmd_dict.get("name", file_name)
 
 
+def _create_usage(doc_lines: list[str]) -> Optional[str]:
+    idx, line = _find_line(doc_lines, USAGE_LINE)
+    if idx < 0 or line is None:
+        return None
+    return line.replace(USAGE_LINE, "").strip()
+
+
 def _create_function_doc(doc_lines: list[str]) -> list[str]:
     lines = list(doc_lines)
     idx, line = _find_line(lines, ARGUMENT_LINE)
@@ -77,6 +87,9 @@ def _create_function_doc(doc_lines: list[str]) -> list[str]:
         idx, line = _find_line(lines, OPTION_LINE)
     if idx > 0:
         lines = lines[:idx]
+    idx, line = _find_line(lines, USAGE_LINE)
+    if idx > 0 and line is not None:
+        lines.pop(idx)
     lines = utils.clean_none_or_empty(lines)
     return [line.strip() for line in lines]
 
@@ -111,7 +124,7 @@ def _get_default_value(doc_string: str) -> tuple[str, Optional[str]]:
     return doc_string, default
 
 
-def _get_possible_values(doc_string: str) -> tuple[str, list[str]]:
+def _get_possible_values_regex(doc_string: str) -> tuple[str, list[str]]:
     matched = POSSIBLE_PATTERN.match(doc_string)
     if matched is None:
         return doc_string, []
@@ -119,6 +132,25 @@ def _get_possible_values(doc_string: str) -> tuple[str, list[str]]:
     doc_string = doc_string.replace(complete, "").strip()
     possible_values = utils.strip_lines(matched.group("values").split(","))
     return doc_string, possible_values
+
+
+def _get_possible_values_startswith(doc_string: str) -> tuple[str, list[str]]:
+    if not doc_string.lower().startswith("possible values:"):
+        return doc_string, []
+    possible_values = doc_string.splitlines(keepends=False)
+    values = []
+    for value in possible_values[1:]:
+        if not value.strip().startswith("-"):
+            continue
+        values.append(value.strip())
+    return doc_string, values
+
+
+def _get_possible_values(doc_string: str) -> tuple[str, list[str]]:
+    doc_string, values = _get_possible_values_regex(doc_string)
+    if len(values) == 0:
+        doc_string, values = _get_possible_values_startswith(doc_string)
+    return doc_string, values
 
 
 def _docs_default_and_values(doc_lines: list[str]) -> tuple[list[str], Optional[str], list[str]]:
@@ -130,11 +162,11 @@ def _docs_default_and_values(doc_lines: list[str]) -> tuple[list[str], Optional[
     return doc_lines, default, possible_values
 
 
-def _get_short_and_normal_option(line: str) -> tuple[Optional[str], Optional[str]]:
-    matched = OPTION_PATTERN.match(line)
-    if matched is None:
+def _get_option_short_and_name(line: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    option = OPTION_PATTERN.match(line)
+    if option is None:
         raise Exception(f"No Option found in line {line}")
-    return matched.group("short"), matched.group("name")
+    return option.group("short"), option.group("name"), option.group("arg")
 
 
 def _create_options(doc_lines: list[str]) -> list[CommandOption]:
@@ -142,26 +174,27 @@ def _create_options(doc_lines: list[str]) -> list[CommandOption]:
     option_indexes = _get_indexes(option_lines, startswith="-")
     options = []
     for start_idx, next_idx in itertools.pairwise(option_indexes):
-        short, name = _get_short_and_normal_option(option_lines[start_idx])
+        short, name, arg_value = _get_option_short_and_name(option_lines[start_idx])
         doc_lines = option_lines[start_idx + 1 : next_idx]
         doc_lines, default, possible_values = _docs_default_and_values(doc_lines)
         options.append(
             CommandOption(
-                short=short,
-                name=name,
-                doc_string=doc_lines,
-                default=default,
-                possible_values=possible_values,
+                short=utils.strip_value(short),
+                name=utils.strip_value(name),
+                arg_value=utils.strip_value(arg_value),
+                description=utils.strip_lines(doc_lines),
+                default=utils.strip_value(default),
+                possible_values=utils.strip_lines(possible_values),
             )
         )
     return options
 
 
 def _get_argument_name(line: str) -> str:
-    matched = ARGS_PATTERN.match(line)
-    if matched is None:
+    argument = ARGS_PATTERN.match(line)
+    if argument is None:
         raise Exception(f"No ARGUMENT name found in line {line}")
-    return matched.group("name")
+    return argument.group("name")
 
 
 def _create_arguments(doc_lines: list[str]) -> list[CommandArgument]:
@@ -174,10 +207,10 @@ def _create_arguments(doc_lines: list[str]) -> list[CommandArgument]:
         doc_lines, default, possible_values = _docs_default_and_values(doc_lines)
         args.append(
             CommandArgument(
-                name=name,
-                doc_string=doc_lines,
-                default=default,
-                possible_values=possible_values,
+                name=utils.strip_value(name),
+                description=utils.strip_lines(doc_lines),
+                default=utils.strip_value(default),
+                possible_values=utils.strip_lines(possible_values),
             )
         )
     return args
@@ -187,11 +220,13 @@ def create(path: Path) -> ApiCommand:
     lines = _read_docs(path)
     api_name = _get_cmd_name(path, lines)
     doc_string = _create_function_doc(lines)
+    usage = _create_usage(lines)
     options = _create_options(lines)
     arguments = _create_arguments(lines)
     return ApiCommand(
         name=api_name,
         description=doc_string,
+        usage=usage,
         arguments=arguments,
         options=options,
     )

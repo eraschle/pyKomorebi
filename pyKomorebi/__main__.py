@@ -2,7 +2,7 @@ import argparse
 from pathlib import Path
 
 from pyKomorebi.generate import generate_from_path
-from pyKomorebi.generator import Options
+from pyKomorebi.generate import GeneratorArgs
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -44,9 +44,12 @@ def parse_arguments() -> argparse.Namespace:
 
 if __name__ == '__main__':
     args = parse_arguments()
-    options = Options(
+
+    options = GeneratorArgs(
+        language=args.language,
         import_path=args.import_path,
-        import_extension=args.extension,
+        extension=args.extension,
         export_path=args.export_path,
+        exclude_names=["pipe", "socket", "tcp"],
     )
-    generate_from_path(args.language, options)
+    generate_from_path(**options)
