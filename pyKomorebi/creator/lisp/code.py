@@ -25,9 +25,8 @@ class LispCodeFormatter(ACodeFormatter):
     pattern = re.compile(r"[^a-zA-Z0-9]+")
     separator = "-"
 
-    def __init__(self, lisp_module: str, max_length: int) -> None:
-        super().__init__(indent="  ", max_length=max_length)
-        self.lisp_module = lisp_module
+    def __init__(self, module_name: str, max_length: int) -> None:
+        super().__init__(indent="  ", max_length=max_length, module_name=module_name)
 
     def _clean_name(self, name: str) -> str:
         name = self.pattern.sub(self.separator, name)
@@ -51,7 +50,7 @@ class LispCodeFormatter(ACodeFormatter):
     def function_name(self, name: str, private: bool = False) -> str:
         name = self.name_to_code(name)
         name = f"-{name}" if private else name
-        return "-".join([self.name_to_code(self.lisp_module), name])
+        return "-".join([self.name_to_code(self.module_name), name])
 
 
 def valid_values_of(values: list[str] | None) -> TypeGuard[list[str]]:
@@ -61,8 +60,6 @@ def valid_values_of(values: list[str] | None) -> TypeGuard[list[str]]:
 
 
 class ALispArgCreator(IArgCreator[TArg]):
-    enumeration = re.compile(r"(?P<name>\s*-\s?[-\w\s]*:)")
-
     def __init__(self, elements: list[TArg], formatter: LispCodeFormatter) -> None:
         self.elements = elements
         self.formatter = formatter
@@ -70,25 +67,10 @@ class ALispArgCreator(IArgCreator[TArg]):
     def valid_description(self, arg: TArg, strip_char: str | None = None) -> list[str]:
         return utils.list_without_none_or_empty(*arg.description, strip_chars=strip_char)
 
-    def are_enum_possible_values(self, arg: TArg, pattern: re.Pattern) -> bool:
-        for value in arg.possible_values:
-            if not pattern.match(value):
-                return False
-        return True
-
-    def _split_enumeration(self, text: str, strip_char: str | None) -> tuple[str, str | None]:
-        if not self.enumeration.match(text):
-            return utils.strip_value(text, strip_chars=strip_char), None
-        values = self.enumeration.split(text, maxsplit=1)
-        values = utils.list_without_none_or_empty(*values, strip_chars=strip_char)
-        if len(values) == 0:
-            return utils.strip_value(text, strip_chars=strip_char), None
-        return values[0], values[1]
-
     def valid_possible_values(self, arg: TArg, strip_char: str | None) -> list[tuple[str, str | None]]:
         values = []
         for value in arg.possible_values:
-            values.append(self._split_enumeration(value, strip_char=strip_char))
+            values.append(utils.split_enum(value, pattern=utils.ENUM_PATTERN, strip_char=strip_char))
         return values
 
     def default_value(self, arg: TArg, format_str: str | None = None) -> str:

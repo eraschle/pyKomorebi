@@ -34,7 +34,7 @@ def get(**kwargs) -> ICodeCreator:
     if kwargs["language"] == "ahk":
         from pyKomorebi.creator import ahk
 
-        return ahk.AutoHotKeyCreator()
+        return ahk.AutoHotKeyCreator(kwargs["translated"])
     if kwargs["language"] == "lisp":
         from pyKomorebi.creator import lisp
 

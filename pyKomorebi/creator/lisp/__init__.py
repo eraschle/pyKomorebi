@@ -1,3 +1,3 @@
-from pyKomorebi.creator.lisp.generator import LispCreator
+from pyKomorebi.creator.lisp.creator import LispCreator
 
 __all__ = ["LispCreator"]

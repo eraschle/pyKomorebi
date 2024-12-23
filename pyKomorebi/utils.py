@@ -80,3 +80,16 @@ def lines_as_str(*values: str) -> str:
     if len(values) == 0:
         return ""
     return as_string(*values, separator="\n")
+
+
+ENUM_PATTERN = re.compile(r"(?P<name>\s*-\s?[-\w\s]*:)")
+
+
+def split_enum(text: str, pattern: re.Pattern, strip_char: str | None) -> tuple[str, str | None]:
+    if not pattern.match(text):
+        return strip_value(text, strip_chars=strip_char), None
+    values = pattern.split(text, maxsplit=1)
+    values = list_without_none_or_empty(*values, strip_chars=strip_char)
+    if len(values) == 0:
+        return strip_value(text, strip_chars=strip_char), None
+    return values[0], values[1]

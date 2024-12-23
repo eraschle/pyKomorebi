@@ -50,9 +50,10 @@ class ICodeFormatter(Protocol):
 class ACodeFormatter(ABC, ICodeFormatter):
     _empty_line = [""]
 
-    def __init__(self, indent: str, max_length: int):
+    def __init__(self, indent: str, max_length: int, module_name: str):
         self.indent_str = indent
         self.max_length = max_length
+        self.module_name = module_name
 
     def is_not_max_length(self, line: str | None) -> bool:
         if line is None:

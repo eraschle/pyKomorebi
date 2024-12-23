@@ -24,7 +24,7 @@ class LispCreator(ACodeCreator):
         self.max_length = max_length
         self.manager = manager
         self.formatter = LispCodeFormatter(
-            lisp_module=export_path.with_suffix("").name,
+            module_name=export_path.with_suffix("").name,
             max_length=max_length,
         )
 

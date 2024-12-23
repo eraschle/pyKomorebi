@@ -32,7 +32,7 @@ class PackageInfo:
 
     @property
     def module_name(self) -> str:
-        return self.formatter.lisp_module
+        return self.formatter.module_name
 
     @property
     def user_and_email(self) -> str:
@@ -92,7 +92,7 @@ def _custom_executable(info: PackageInfo) -> list[str]:
     lines.append(info.indent(f"(defcustom {_executable_var(info)} \"\"", level=0))
     lines.append(info.indent("\"The path to the komorebi executable.\"", level=1))
     lines.append(info.indent(":type 'string", level=1))
-    lines.append(info.indent(f":group '{info.name})", level=1))
+    lines.append(info.indent(f":group '{info.module_name})", level=1))
     return lines
 
 
