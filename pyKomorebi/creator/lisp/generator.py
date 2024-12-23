@@ -2,6 +2,7 @@ import re
 from pathlib import Path
 from typing import Iterable
 
+from pyKomorebi.creator import TranslationManager
 from pyKomorebi.creator.code import ACodeCreator
 from pyKomorebi.creator.lisp import package as pkg
 from pyKomorebi.creator.lisp.code import LispCodeFormatter, LispCommandCreator
@@ -18,10 +19,13 @@ SINGLE_QUOTE = re.compile(r"'([^']*)'")
 class LispCreator(ACodeCreator):
     autoload_line = ";;;###autoload"
 
-    def __init__(self, export_path: Path):
+    def __init__(self, export_path: Path, manager: TranslationManager, max_length: int = 80):
         super().__init__(extension=export_path.suffix)
+        self.max_length = max_length
+        self.manager = manager
         self.formatter = LispCodeFormatter(
             lisp_module=export_path.with_suffix("").name,
+            max_length=max_length,
         )
 
     def _replace_single_quotes(self, lines: list[str]) -> list[str]:
@@ -39,13 +43,16 @@ class LispCreator(ACodeCreator):
 
     def command(self, command: ApiCommand) -> list[str]:
         command.remove_help_option()
-        creator = LispCommandCreator(command, self.formatter)
+        creator = LispCommandCreator(
+            command=command,
+            formatter=self.formatter,
+            manager=self.manager,
+        )
         lines = []
         lines.append(creator.signature(level=0))
         lines.append(
             creator.docstring(
                 separator=" ",
-                columns=0,
                 level=1,
                 suffix_args=":",
             )
@@ -65,9 +72,9 @@ class LispCreator(ACodeCreator):
             formatter=self.formatter,
         )
         lines = pkg.pre_generator(package_info)
-        lines.extend(self.formatter.empty_line(count=2))
         for command in commands:
+            lines.extend(self.formatter.empty_line(count=1))
             lines.extend(self.command(command=command))
-            lines.extend(self.formatter.empty_line(count=2))
+        lines.extend(self.formatter.empty_line(count=2))
         lines.extend(pkg.post_generator(package_info))
         return lines

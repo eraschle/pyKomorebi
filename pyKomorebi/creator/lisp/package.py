@@ -31,6 +31,10 @@ class PackageInfo:
     formatter: LispCodeFormatter
 
     @property
+    def module_name(self) -> str:
+        return self.formatter.lisp_module
+
+    @property
     def user_and_email(self) -> str:
         return f"{self.user_name} <{self.user_email}>"
 
@@ -48,7 +52,7 @@ class PackageInfo:
 
 def _package_descriptions(info: PackageInfo) -> list[str]:
     lines = info.formatter.empty_line(count=0)
-    lines.append(info.indent(f";;; {info.name}.el --- Description -*- lexical-binding: t; -*-"))
+    lines.append(info.indent(f";;; {info.module_name}.el --- Description -*- lexical-binding: t; -*-"))
     lines.append(info.indent(";;"))
     lines.append(info.indent(f";; Copyright (C) {info.year} {info.user_name}"))
     lines.append(info.indent(";;"))
@@ -98,7 +102,7 @@ def _args_func(info: PackageInfo) -> str:
 
 
 def _get_args_function(info: PackageInfo) -> list[str]:
-    lines = info.formatter.empty_line(count=1)
+    lines = info.formatter.empty_line(count=2)
     lines.append(info.indent(f"(defun {_args_func(info)} (args)", level=0))
     lines.append(info.indent("\"Return string of ARGS.\"", level=1))
     lines.append(info.indent("(string-join", level=1))
@@ -117,8 +121,7 @@ def execute_func(info: PackageInfo) -> str:
 
 
 def _execute_command(info: PackageInfo) -> list[str]:
-    lines = info.formatter.empty_line(count=0)
-    lines.append(info.indent(f"(defun {_args_func(info)} (args)", level=0))
+    lines = info.formatter.empty_line(count=2)
     lines.append(info.indent(f"(defun {execute_func(info)} (command &rest args)", level=0))
     lines.append(info.indent("\"Execute komorebi COMMAND with ARGS in shell.\"", level=1))
     lines.append(info.indent("(let ((shell-cmd (format \"%s %s %s\"", level=1))
@@ -140,11 +143,13 @@ def pre_generator(info: PackageInfo) -> list[str]:
     lines.extend(_get_args_function(info))
     lines.extend(_execute_command(info))
     lines.extend(info.formatter.empty_line(count=2))
+    lines.append(";;")
+    lines.append(";;; Generated CLI Commands")
     return lines
 
 
 def post_generator(info: PackageInfo) -> list[str]:
     lines = info.formatter.empty_line(count=0)
-    lines.append(info.indent(f"(provide '{info.name})"))
-    lines.append(info.indent(f";;; {info.name}.el ends here"))
+    lines.append(info.indent(f"(provide '{info.module_name})"))
+    lines.append(info.indent(f";;; {info.module_name}.el ends here"))
     return lines

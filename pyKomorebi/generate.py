@@ -11,6 +11,7 @@ class GeneratorArgs(TypedDict):
     extension: str
     export_path: Path
     exclude_names: list[str]
+    translated: creator.TranslationManager
 
 
 def _is_excluded(path: Path, exclude_names: list[str]) -> bool:

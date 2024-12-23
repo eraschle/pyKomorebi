@@ -1,7 +1,6 @@
-from typing import Iterable, Unpack
+from typing import Iterable
 
 from pyKomorebi.creator.code import ACodeCreator, ACodeFormatter
-from pyKomorebi.generate import GeneratorArgs
 from pyKomorebi.model import ApiCommand, CommandArgument, CommandOption
 
 
@@ -12,10 +11,10 @@ class AHKCodeFormatter(ACodeFormatter):
     def function_name(self, name: str, private: bool = False) -> str:
         raise NotImplementedError
 
-    def concat_args(self, args: list[str]) -> str:
+    def concat_args(self, *args: str) -> str:
         raise NotImplementedError
 
-    def name_to_doc(self, name: str, **kw) -> str:
+    def name_to_doc(self, name: str, suffix: str | None = None) -> str:
         raise NotImplementedError
 
     def name_to_code(self, name: str) -> str:
@@ -41,8 +40,8 @@ class AutoHotKeyCreator(ACodeCreator):
         names = ["Komorebi", self._ahk_name(command.name, separator="", capitalize=True)]
         return "".join(names)
 
-    def _opt_name(self, arg: CommandOption, with_dash: bool, **kwargs: Unpack[GeneratorArgs]) -> str:
-        name = arg.get_name(kwargs["with_default"])
+    def _opt_name(self, arg: CommandOption, with_dash: bool) -> str:
+        name = arg.get_name()
         if arg.name is not None:
             name = arg.name
         name = self._ahk_name(name.removeprefix("--"), separator="_", capitalize=False)
@@ -59,7 +58,7 @@ class AutoHotKeyCreator(ACodeCreator):
         return options
 
     def _arg_name(self, arg: CommandArgument) -> str:
-        name = arg.get_name(with_default=False)
+        name = arg.get_name()
         return self._ahk_name(name, separator="_", capitalize=False)
 
     def _arguments_names(self, command: ApiCommand) -> list[str]:

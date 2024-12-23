@@ -1,7 +1,6 @@
 import re
 import itertools
 from pathlib import Path
-from typing import Optional, Any
 
 
 from pyKomorebi import utils
@@ -13,7 +12,8 @@ CLEANUP_LINES = ["```"]
 USAGE_LINE = "Usage:"
 
 ARGUMENT_LINE = "Arguments:"
-ARGS_PATTERN = re.compile(r"\s*(?P<name><\w+>)")
+ARGS_PATTERN = re.compile(r"\s*(?P<name><[a-zA-Z-_]+>)")
+ARGS_OPT_PATTERN = re.compile(r"\s*(?P<name>\[[A-Z-_]+\])(?P<optional>.*)?")
 
 OPTION_LINE = "Options:"
 OPTION_PATTERN = re.compile(r"\s*(?P<short>-\w+)?(?:[,\s]*(?P<name>--\w+))?\s*(?P<arg><.*>)?")
@@ -42,7 +42,7 @@ def _read_docs(path: Path) -> list[str]:
     return lines
 
 
-def _split_usage_line(line: str, cli_name: Optional[str] = None) -> dict[str, Any]:
+def _split_usage_line(line: str, cli_name: str | None = None) -> dict:
     if cli_name is None:
         cli_name = "komorebic.exe"
     command = line.split(" ")
@@ -53,11 +53,12 @@ def _split_usage_line(line: str, cli_name: Optional[str] = None) -> dict[str, An
     return {"name": command[0], "arguments": command[1:]}
 
 
-def _find_line(doc_lines: list[str], search: str) -> tuple[int, Optional[str]]:
+def _find_line(doc_lines: list[str], search: str, lower_case: bool = False) -> tuple[int, str | None]:
     for idx, line in enumerate(doc_lines):
+        line = line.lower() if lower_case else line
         if search not in line:
             continue
-        return idx, search
+        return idx, line
     return -1, None
 
 
@@ -73,7 +74,7 @@ def _get_cmd_name(path: Path, doc_lines: list[str]) -> str:
     return cmd_dict.get("name", file_name)
 
 
-def _create_usage(doc_lines: list[str]) -> Optional[str]:
+def _create_usage(doc_lines: list[str]) -> str | None:
     idx, line = _find_line(doc_lines, USAGE_LINE)
     if idx < 0 or line is None:
         return None
@@ -91,7 +92,7 @@ def _create_function_doc(doc_lines: list[str]) -> list[str]:
     if idx > 0 and line is not None:
         lines.pop(idx)
     lines = utils.clean_none_or_empty(lines)
-    return [line.strip() for line in lines]
+    return utils.strip_lines(lines)
 
 
 def _get_lines(doc_lines: list[str], current: str, other: str) -> list[str]:
@@ -102,20 +103,42 @@ def _get_lines(doc_lines: list[str], current: str, other: str) -> list[str]:
     arg_idx, _ = _find_line(lines, other)
     if arg_idx > 0:
         lines = lines[:arg_idx]
-    return utils.clean_none_or_empty(lines, strip=True)
+    return utils.clean_none_or_empty(lines, strip_chars=None)
 
 
-def _get_indexes(lines: list[str], startswith: str) -> list[int]:
+def _match_pattern(line: str, patterns: list[re.Pattern]) -> re.Match | None:
+    for pattern in patterns:
+        match = pattern.match(line)
+        if match is None:
+            continue
+        return match
+    return None
+
+
+def _match_any_value(match: re.Match | None, *group_name: str) -> bool:
+    if match is None:
+        return False
+    for name, value in match.groupdict().items():
+        if len(group_name) > 0 and name not in group_name:
+            continue
+        if value is None or len(value.strip()) == 0:
+            continue
+        return True
+    return False
+
+
+def _get_indexes(lines: list[str], regexes: list[re.Pattern], *group_names: str) -> list[int]:
     indexes = []
     for idx, line in enumerate(lines):
-        if not line.strip().startswith(startswith):
+        match = _match_pattern(line, regexes)
+        if not _match_any_value(match, *group_names):
             continue
         indexes.append(idx)
     indexes.append(len(lines))
     return indexes
 
 
-def _get_default_value(doc_string: str) -> tuple[str, Optional[str]]:
+def _get_default_value(doc_string: str) -> tuple[str, str | None]:
     matched = DEFAULT_PATTERN.match(doc_string)
     if matched is None:
         return doc_string, None
@@ -135,15 +158,17 @@ def _get_possible_values_regex(doc_string: str) -> tuple[str, list[str]]:
 
 
 def _get_possible_values_startswith(doc_string: str) -> tuple[str, list[str]]:
-    if not doc_string.lower().startswith("possible values:"):
+    doc_lines = doc_string.splitlines(keepends=False)
+    idx, line = _find_line(doc_lines, search="possible values:", lower_case=True)
+    if idx < 0 or line is None:
         return doc_string, []
-    possible_values = doc_string.splitlines(keepends=False)
+    doc_string = "\n".join(doc_lines[:idx])
     values = []
-    for value in possible_values[1:]:
+    for value in doc_lines[idx + 1 :]:
         if not value.strip().startswith("-"):
             continue
-        values.append(value.strip())
-    return doc_string, values
+        values.append(value)
+    return doc_string, utils.strip_lines(values)
 
 
 def _get_possible_values(doc_string: str) -> tuple[str, list[str]]:
@@ -153,16 +178,14 @@ def _get_possible_values(doc_string: str) -> tuple[str, list[str]]:
     return doc_string, values
 
 
-def _docs_default_and_values(doc_lines: list[str]) -> tuple[list[str], Optional[str], list[str]]:
-    doc_string = "\n".join(utils.clean_none_or_empty(doc_lines, strip=True))
+def _docs_default_and_values(doc_lines: list[str]) -> tuple[list[str], str | None, list[str]]:
+    doc_string = "\n".join(utils.clean_none_or_empty(doc_lines, strip_chars=None))
     doc_string, default = _get_default_value(doc_string)
     doc_string, possible_values = _get_possible_values(doc_string)
-    doc_lines = [line.strip() for line in doc_string.split("\n")]
-    doc_lines = [line for line in doc_lines if len(line) > 0]
-    return doc_lines, default, possible_values
+    return doc_string.splitlines(keepends=False), default, possible_values
 
 
-def _get_option_short_and_name(line: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
+def _get_option_short_and_name(line: str) -> tuple[str | None, str | None, str | None]:
     option = OPTION_PATTERN.match(line)
     if option is None:
         raise Exception(f"No Option found in line {line}")
@@ -171,7 +194,7 @@ def _get_option_short_and_name(line: str) -> tuple[Optional[str], Optional[str],
 
 def _create_options(doc_lines: list[str]) -> list[CommandOption]:
     option_lines = _get_lines(doc_lines, current=OPTION_LINE, other=ARGUMENT_LINE)
-    option_indexes = _get_indexes(option_lines, startswith="-")
+    option_indexes = _get_indexes(option_lines, regexes=[OPTION_PATTERN])
     options = []
     for start_idx, next_idx in itertools.pairwise(option_indexes):
         short, name, arg_value = _get_option_short_and_name(option_lines[start_idx])
@@ -181,7 +204,7 @@ def _create_options(doc_lines: list[str]) -> list[CommandOption]:
             CommandOption(
                 short=utils.strip_value(short),
                 name=utils.strip_value(name),
-                arg_value=utils.strip_value(arg_value),
+                value=utils.strip_value(arg_value),
                 description=utils.strip_lines(doc_lines),
                 default=utils.strip_value(default),
                 possible_values=utils.strip_lines(possible_values),
@@ -190,19 +213,26 @@ def _create_options(doc_lines: list[str]) -> list[CommandOption]:
     return options
 
 
-def _get_argument_name(line: str) -> str:
+def _get_argument_name(line: str) -> tuple[str, bool]:
     argument = ARGS_PATTERN.match(line)
+    optional = False
+    if argument is None:
+        argument = ARGS_OPT_PATTERN.match(line)
+        optional = True
     if argument is None:
         raise Exception(f"No ARGUMENT name found in line {line}")
-    return argument.group("name")
+    if optional and argument.group("optional") is not None:
+        opt_value = argument.group("optional")
+        optional = not opt_value.startswith("...")
+    return argument.group("name"), optional
 
 
 def _create_arguments(doc_lines: list[str]) -> list[CommandArgument]:
     args_lines = _get_lines(doc_lines, current=ARGUMENT_LINE, other=OPTION_LINE)
-    args_indexes = _get_indexes(args_lines, startswith="<")
+    args_indexes = _get_indexes(args_lines, regexes=[ARGS_PATTERN, ARGS_OPT_PATTERN])
     args = []
     for start_idx, next_idx in itertools.pairwise(args_indexes):
-        name = _get_argument_name(args_lines[start_idx])
+        name, optional = _get_argument_name(args_lines[start_idx])
         doc_lines = args_lines[start_idx + 1 : next_idx]
         doc_lines, default, possible_values = _docs_default_and_values(doc_lines)
         args.append(
@@ -211,6 +241,7 @@ def _create_arguments(doc_lines: list[str]) -> list[CommandArgument]:
                 description=utils.strip_lines(doc_lines),
                 default=utils.strip_value(default),
                 possible_values=utils.strip_lines(possible_values),
+                optional=optional,
             )
         )
     return args

@@ -2,36 +2,43 @@ import re
 from typing import Any
 
 
-def strip_value(value):
+def strip_value(value, strip_chars: str | None = None) -> str:
     if value is None:
         return ""
-    return value.strip()
+    return str(value).strip(strip_chars)
 
 
-def strip_lines(lines: list[str]) -> list[str]:
-    values = [strip_value(line) for line in lines]
+def strip_lines(lines: list[str], strip_chars: str | None = None) -> list[str]:
+    values = [strip_value(line, strip_chars) for line in lines]
     return [value for value in values if len(value) > 0]
 
 
-def is_none_or_empty(line: Any) -> bool:
+def is_none_or_empty(line: Any, strip_chars: str | None = None) -> bool:
     if line is None:
         return True
     if not isinstance(line, str):
         line = str(line)
-    return len(line.strip()) == 0
+    line = strip_value(line, strip_chars)
+    return len(line) == 0
 
 
-def _clean_none_or_empty(lines: list[str], index: int) -> list[str]:
-    while len(lines) > 0 and is_none_or_empty(lines[index]):
+def list_without_none_or_empty(*text: str | None, strip_chars: str | None = None) -> list[str]:
+    values = [value for value in text if value is not None]
+    if strip_chars is not None:
+        values = strip_lines(values, strip_chars)
+    return [val for val in values if not is_none_or_empty(val, strip_chars)]
+
+
+def _clean_none_or_empty(lines: list[str], index: int, strip_chars: str | None = None) -> list[str]:
+    while len(lines) > 0 and is_none_or_empty(lines[index], strip_chars):
         lines.pop(index)
     return lines
 
 
-def clean_none_or_empty(lines: list[str], strip: bool = False) -> list[str]:
-    if strip:
-        lines = strip_lines(lines)
-    lines = _clean_none_or_empty(lines, index=0)
-    lines = _clean_none_or_empty(lines, index=-1)
+def clean_none_or_empty(lines: list[str], strip_chars: str | None = None) -> list[str]:
+    lines = strip_lines(lines, strip_chars)
+    lines = _clean_none_or_empty(lines, index=0, strip_chars=strip_chars)
+    lines = _clean_none_or_empty(lines, index=-1, strip_chars=strip_chars)
     return lines
 
 

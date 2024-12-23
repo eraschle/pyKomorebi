@@ -1,103 +1,99 @@
 import re
 from abc import ABC
-from typing import Iterable, Optional, Unpack
+from typing import Unpack
 
 from pyKomorebi import utils
-from pyKomorebi.creator.code import ArgDoc, ICodeFormatter, IDocCreator, CreatorArgs
+from pyKomorebi.creator.code import ArgDoc, FormatterArgs, ICodeFormatter, IDocCreator
 
 
 class ADocCreator(ABC, IDocCreator):
     sentence_split = re.compile(r"(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s")
-    enumeration = re.compile(r"(?P<name>\s*-\s?[\w\s]*:)")
 
-    def __init__(self, max_length: int, formatter: ICodeFormatter):
-        self.max_length = max_length
+    def __init__(self, formatter: ICodeFormatter):
         self.formatter = formatter
 
-    def is_valid_length(self, line: Optional[str], level: int = 0, columns: int = 0) -> bool:
-        if line is None:
-            return False
-        level_col = self.formatter.indent_for(level=level)
-        line_length = len(line) + max(len(level_col), columns)
-        return line_length <= self.max_length
+    def has_sentence(self, value: str | list[str]) -> bool:
+        if isinstance(value, str):
+            value = [value]
+        return any(self.sentence_split.match(line) is not None for line in value)
 
-    def valid_lines_of(self, some_text: Optional[str], **kw: Unpack[CreatorArgs]) -> list[str]:
-        if some_text is None or len(some_text.strip()) == 0:
+    def get_first_sentence_and_rest(self, lines: list[str]) -> tuple[str | None, list[str]]:
+        text = utils.as_string(*lines, separator=" ")
+        sentences = self.sentence_split.split(text)
+        if len(sentences) == 0:
+            return None, lines
+        if len(sentences) == 1:
+            return sentences[0], []
+        return sentences[0], sentences[1:]
+
+    def ensure_sentences_has_valid_length(self, sentences: list[str], **kw: Unpack[FormatterArgs]) -> list[str]:
+        if len(sentences) == 0:
             return []
-        if self.is_valid_length(
-            some_text,
-            level=kw.get("level", 0),
-            columns=kw.get("columns", 0) or 0,
-        ):
-            return [some_text]
-        return self.concat_values(*some_text.split(kw["separator"]), **kw)
+        valid_sentences = []
+        for sentence in sentences:
+            valid_lines = self.formatter.valid_lines_for(sentence, **kw)
+            valid_sentences.extend(valid_lines)
+        return valid_sentences
 
-    def _get_enumeration(self, text: str, **kw: Unpack[CreatorArgs]) -> tuple[Optional[str], str]:
-        if text is None or len(text.strip()) == 0:
-            return None, text
-        values = self.enumeration.split(text)
-        if values is None or len(values) == 0:
-            return None, text
-        values = [value.strip("- :") for value in values]
-        values = [value for value in values if len(value) > 0]
-        if len(values) != 2:
-            return None, text
-        return self.formatter.fill_column(values[0], kw.get("columns", 0)), values[1]
+    def _add_possible_value_title(
+        self, arg_doc: ArgDoc, doc_lines: list[str], **kw: Unpack[FormatterArgs]
+    ) -> list[str]:
+        if arg_doc.has_description():
+            prefix = self.formatter.column_prefix(kw.get("columns", 0))
+            pos_values = self.formatter.concat_values(prefix, "Possible values:", **kw)
+            doc_lines.extend(pos_values)
+        else:
+            kw["separator"] = " "
+            last_line = doc_lines.pop(-1)
+            doc_lines.extend(self.formatter.concat_values(last_line, "Possible values:", **kw))
+        return doc_lines
 
-    def _concat_enumeration(self, enum: str, rest: str, **kw: Unpack[CreatorArgs]) -> tuple[str, str]:
-        lines = self.concat_values(enum, rest, **kw)
-        return utils.lines_as_str(*lines[:-1]), lines[-1]
+    def _prepare_enum_possible_values(self, arg_doc: ArgDoc) -> list[tuple[str, str | None]]:
+        enum_values = []
+        for enum, value in arg_doc.possible_values:
+            if enum is None:
+                raise ValueError("Enum value is None")
+            enum_values.append((enum.upper(), value))
+        return enum_values
 
-    def _concat_to_long_value(self, value: str, **kw: Unpack[CreatorArgs]) -> tuple[str, str]:
-        separator = kw.get("separator", None)
-        kw["separator"] = " "
-        value_lines = self.valid_lines_of(value, **kw)
-        kw["separator"] = separator
-        return utils.lines_as_str(*value_lines[:-1]), value_lines[-1]
+    def _get_possible_values(self, arg_doc: ArgDoc, doc_lines: list[str], **kw: Unpack[FormatterArgs]) -> list[str]:
+        kw = kw.copy()
+        doc_lines = self._add_possible_value_title(arg_doc, doc_lines, **kw)
+        kw["prefix"] = kw.get("columns", 0) + 1
+        if arg_doc.are_enums_possible_values():
+            enum_possible_values = self._prepare_enum_possible_values(arg_doc)
+            enum_column = max([len(enum) for enum, _ in enum_possible_values]) + 1
+            kw["columns"] = enum_column + kw.get("columns", 0)
+            for enum, value in enum_possible_values:
+                if value is None:
+                    values = self.formatter.concat_values(enum, **kw)
+                else:
+                    values = self.formatter.concat_values(enum, value, **kw)
+                doc_lines.extend(values)
+        else:
+            kw["separator"] = ", "
+            possible_values = [enum for enum, _ in arg_doc.possible_values]
+            doc_lines.extend(self.formatter.concat_values(*possible_values, **kw))
+        return doc_lines
 
-    def concat_values(self, *values: str, **kw: Unpack[CreatorArgs]) -> list[str]:
-        concat_lines = []
-        current = ""
-        for value in values:
-            concat = utils.as_string(current, value, separator=kw["separator"])
-            kw_valid = {"level": kw.get("level", 0), "columns": 0}
-            if self.is_valid_length(concat, **kw_valid):
-                current = concat
-                continue
-            enum, rest = self._get_enumeration(value, **kw)
-            if enum is not None:
-                current, value = self._concat_enumeration(enum, rest, **kw)
-            elif not self.is_valid_length(value, level=kw.get("level", 0)):
-                current, value = self._concat_to_long_value(value, **kw)
-            concat_lines.append(current)
-            columns = self.formatter.fill_column("", kw.get("columns", 0))
-            current = utils.as_string(columns, value, separator=kw["separator"])
-        concat_lines.append(current)
-        return concat_lines
-
-    def _ensure_not_empty(self, lines: list[str]) -> list[str]:
-        return [line for line in lines if len(line.strip()) > 0]
-
-    def _command_arg_doc(self, arg_doc: ArgDoc, **kw: Unpack[CreatorArgs]) -> str:
+    def _command_arg_doc(self, arg_doc: ArgDoc, **kw: Unpack[FormatterArgs]) -> list[str]:
         name = self.formatter.apply_suffix(arg_doc.name, kw.get("suffix", None))
         name = self.formatter.fill_column(name, kw.get("columns", 0))
-        doc_lines = self.concat_values(name, *arg_doc.description, **kw)
-        doc_string = utils.lines_as_str(*doc_lines)
-        if len(arg_doc.possible_values) > 0:
-            separator = kw.get("separator", None)
-            kw["separator"] = ", "
-            concat_values = self.concat_values(doc_string, *arg_doc.possible_values, **kw)
-            doc_string = utils.lines_as_str(*concat_values)
-            kw["separator"] = separator
-        if len(arg_doc.default) > 0:
-            default = self.formatter.fill_column(arg_doc.default, kw.get("columns", 0))
-            doc_string = utils.lines_as_str(doc_string, default)
-        return doc_string
+        doc_lines = self.formatter.concat_values(name, *arg_doc.description, **kw)
+        if arg_doc.has_description() and len(doc_lines) == 1:
+            doc_lines[0] = self.formatter.ensure_ends_with_point(doc_lines[0])
+        if arg_doc.has_possible_values():
+            doc_lines = self._get_possible_values(arg_doc, doc_lines, **kw)
+        if arg_doc.has_default():
+            column_prefix = self.formatter.column_prefix(kw.get("columns", 0))
+            default_lines = self.formatter.concat_values(column_prefix, arg_doc.default, **kw)
+            doc_lines.extend(default_lines)
+        return doc_lines
 
-    def _get_max_length(self, docs: Iterable[ArgDoc], suffix: str) -> Optional[int]:
+    def _get_max_length(self, docs: list[ArgDoc], suffix: str) -> int:
         if suffix is None or len(suffix) == 0:
-            return None
+            return 0
         arg_names = [self.formatter.apply_suffix(arg.name, suffix) for arg in docs]
         if len(arg_names) == 0:
-            return None
-        return max([len(name) for name in arg_names]) + 2
+            return 0
+        return max([len(name) for name in arg_names])
