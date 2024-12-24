@@ -1,5 +1,5 @@
 import re
-from typing import Any
+from typing import Any, TypeGuard
 
 
 def strip_value(value, strip_chars: str | None = None) -> str:
@@ -18,8 +18,13 @@ def is_none_or_empty(line: Any, strip_chars: str | None = None) -> bool:
         return True
     if not isinstance(line, str):
         line = str(line)
-    line = strip_value(line, strip_chars)
+    if strip_chars is not None:
+        line = strip_value(line, strip_chars)
     return len(line) == 0
+
+
+def is_not_none_or_empty(line: Any, strip_chars: str | None = None) -> TypeGuard[str]:
+    return not is_none_or_empty(line, strip_chars)
 
 
 def list_without_none_or_empty(*text: str | None, strip_chars: str | None = None) -> list[str]:
@@ -53,19 +58,21 @@ def replace_double_quotes(lines: list[str]) -> list[str]:
 
 def _clean_pattern_in(line: str, patterns: list[re.Pattern]) -> str:
     for pattern in patterns:
-        match = pattern.findall(line)
-        if match is None:
+        matched = pattern.findall(line)
+        if matched is None:
             continue
-        for replace in match:
-            line = line.replace(replace, "")
+        for match_string in matched:
+            replace = ""
+            if match_string.startswith(" ") or match_string.endswith(" "):
+                replace = " "
+            line = line.replace(match_string, replace)
     return line
 
 
 def clean_pattern_in(lines: list[str], patterns: list[re.Pattern]) -> list[str]:
-    changed = []
-    for line in lines:
-        changed.append(_clean_pattern_in(line, patterns))
-    return changed
+    text = lines_as_str(*lines)
+    changed = _clean_pattern_in(text, patterns)
+    return changed.split("\n")
 
 
 def as_string(*values: str, separator: str) -> str:

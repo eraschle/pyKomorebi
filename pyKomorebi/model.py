@@ -1,5 +1,8 @@
+from abc import ABC, abstractmethod
 from typing import TypeGuard
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from pyKomorebi import utils
 
 
 def _is_value(value: str | None) -> TypeGuard[str]:
@@ -14,23 +17,20 @@ def _value(value: str | None) -> str | None:
     return value.strip()
 
 
-def _get_list(current_list: list[str]) -> list[str]:
-    return [val.strip() for val in current_list if _is_value(val)]
-
-
 @dataclass
-class CommandArgs:
+class CommandArgs(ABC):
     description: list[str]
     default: str | None
     possible_values: list[str]
 
     def __post_init__(self):
         self.default = _value(self.default)
-        self.description = _get_list(self.description)
-        self.possible_values = _get_list(self.possible_values)
+        self.description = utils.list_without_none_or_empty(*self.description)
+        self.possible_values = utils.list_without_none_or_empty(*self.possible_values)
 
+    @abstractmethod
     def get_name(self) -> str:
-        raise NotImplementedError
+        pass
 
     def has_default(self) -> bool:
         return self.default is not None
@@ -56,6 +56,14 @@ class CommandOption(CommandArgs):
 
     def is_help(self) -> bool:
         return self.name == "--help" or self.short == "-h"
+
+    @property
+    def command_name(self) -> str:
+        if self.name is not None:
+            return self.name
+        if self.short is not None:
+            return self.short
+        raise Exception("Option has neither short nor long name")
 
     @property
     def short_name(self) -> str | None:
@@ -84,16 +92,16 @@ class CommandArgument(CommandArgs):
         return self.name
 
 
-@dataclass
+@dataclass(repr=True, order=True)
 class ApiCommand:
-    name: str
-    description: list[str]
-    usage: str | None
-    arguments: list[CommandArgument]
-    options: list[CommandOption]
+    name: str = field(compare=True, repr=True)
+    description: list[str] = field(compare=False, repr=False)
+    usage: str | None = field(compare=False, repr=False)
+    arguments: list[CommandArgument] = field(compare=False, repr=False)
+    options: list[CommandOption] = field(compare=False, repr=False)
 
     def __post_init__(self):
-        self.description = _get_list(self.description)
+        self.description = utils.list_without_none_or_empty(*self.description)
         self.usage = _value(self.usage)
 
     def remove_help_option(self):

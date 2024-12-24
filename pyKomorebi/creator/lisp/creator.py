@@ -73,7 +73,7 @@ class LispCreator(ACodeCreator):
         )
         lines = pkg.pre_generator(package_info)
         for command in commands:
-            lines.extend(self.formatter.empty_line(count=1))
+            lines.extend(self.formatter.empty_line(count=2))
             lines.extend(self.command(command=command))
         lines.extend(self.formatter.empty_line(count=2))
         lines.extend(pkg.post_generator(package_info))

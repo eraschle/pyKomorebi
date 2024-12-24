@@ -17,11 +17,15 @@ OPTION_PATTERN = re.compile(r"\s*(?P<short>-\w+)?(?:[,\s]*(?P<name>--[\w-]+))?\s
 DEFAULT_PATTERN = re.compile(r".*(?P<complete>\[default:\s*(?P<default>\w*)\])", re.DOTALL)
 POSSIBLE_PATTERN = re.compile(r".*(?P<complete>\[possible values:\s*(?P<values>.*)\])", re.DOTALL)
 
+CLEANUP_PATTERN = [
+    re.compile(r"(\s*\(without.*?\)\s*)", re.DOTALL),
+]
+
 
 def find_line(doc_lines: list[str], search: str, lower_case: bool = False) -> tuple[int, str | None]:
     for idx, line in enumerate(doc_lines):
-        line = line.lower() if lower_case else line
-        if search not in line:
+        search_value = line.lower() if lower_case else line
+        if search not in search_value:
             continue
         return idx, line
     return -1, None
@@ -61,17 +65,17 @@ def _get_lines(doc_lines: list[str], current: str, other: str) -> list[str]:
 
 def _match_pattern(line: str, patterns: list[re.Pattern]) -> re.Match | None:
     for pattern in patterns:
-        match = pattern.match(line)
-        if match is None:
+        matched = pattern.match(line)
+        if matched is None:
             continue
-        return match
+        return matched
     return None
 
 
-def _match_any_value(match: re.Match | None, *group_name: str) -> bool:
-    if match is None:
+def _match_any_value(matched: re.Match | None, *group_name: str) -> bool:
+    if matched is None:
         return False
-    for name, value in match.groupdict().items():
+    for name, value in matched.groupdict().items():
         if len(group_name) > 0 and name not in group_name:
             continue
         if value is None or len(value.strip()) == 0:
@@ -80,11 +84,11 @@ def _match_any_value(match: re.Match | None, *group_name: str) -> bool:
     return False
 
 
-def _get_indexes(lines: list[str], regexes: list[re.Pattern], *group_names: str) -> list[int]:
+def _get_indexes(lines: list[str], regexes: list[re.Pattern], *group: str) -> list[int]:
     indexes = []
     for idx, line in enumerate(lines):
         match = _match_pattern(line, regexes)
-        if not _match_any_value(match, *group_names):
+        if not _match_any_value(match, *group):
             continue
         indexes.append(idx)
     indexes.append(len(lines))
@@ -152,7 +156,7 @@ def _create_options(doc_lines: list[str]) -> list[CommandOption]:
     for start_idx, next_idx in itertools.pairwise(option_indexes):
         short, name, arg_value, desc = _get_option_short_and_name(option_lines[start_idx])
         doc_lines = option_lines[start_idx + 1 : next_idx]
-        if desc is not None and len(desc.strip()) > 0:
+        if utils.is_not_none_or_empty(desc):
             doc_lines = [desc] + doc_lines
         doc_lines, default, possible_values = _docs_default_and_values(doc_lines)
         options.append(
@@ -184,20 +188,20 @@ def _get_argument_name(line: str) -> tuple[str, bool, str | None]:
 
 def _create_arguments(doc_lines: list[str]) -> list[CommandArgument]:
     args_lines = _get_lines(doc_lines, current=ARGUMENT_LINE, other=OPTION_LINE)
-    args_indexes = _get_indexes(args_lines, regexes=[ARGS_PATTERN, ARGS_OPT_PATTERN])
+    args_indexes = _get_indexes(args_lines, [ARGS_PATTERN, ARGS_OPT_PATTERN], "name")
     args = []
     for start_idx, next_idx in itertools.pairwise(args_indexes):
         name, optional, rest = _get_argument_name(args_lines[start_idx])
         doc_lines = args_lines[start_idx + 1 : next_idx]
-        if rest is not None and len(rest.strip()) > 0:
+        if utils.is_not_none_or_empty(rest):
             doc_lines = [rest] + doc_lines
         doc_lines, default, possible_values = _docs_default_and_values(doc_lines)
         args.append(
             CommandArgument(
                 name=utils.strip_value(name),
-                description=utils.strip_lines(doc_lines),
+                description=utils.list_without_none_or_empty(*doc_lines),
                 default=utils.strip_value(default),
-                possible_values=utils.strip_lines(possible_values),
+                possible_values=utils.list_without_none_or_empty(*possible_values),
                 optional=optional,
             )
         )
@@ -206,6 +210,7 @@ def _create_arguments(doc_lines: list[str]) -> list[CommandArgument]:
 
 def create_api_command(command_name: str, lines: list[str]) -> ApiCommand:
     api_name = command_name
+    lines = utils.clean_pattern_in(lines, CLEANUP_PATTERN)
     doc_string = _create_function_doc(lines)
     usage = _create_usage(lines)
     options = _create_options(lines)
