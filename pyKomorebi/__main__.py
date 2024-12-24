@@ -2,8 +2,7 @@ import argparse
 from pathlib import Path
 
 from pyKomorebi.creator import TranslationManager
-from pyKomorebi.generate import generate_from_path
-from pyKomorebi.generate import GeneratorArgs
+from pyKomorebi import generate as gen
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -48,10 +47,11 @@ if __name__ == '__main__':
     translated = TranslationManager(
         option_map={
             "await": "await-configuration",
+            "tcp": "tcp-port",
         },
         argument_map={},
     )
-    options = GeneratorArgs(
+    options = gen.Options(
         language=args.language,
         import_path=args.import_path,
         extension=args.extension,
@@ -59,4 +59,4 @@ if __name__ == '__main__':
         exclude_names=["pipe", "socket", "tcp"],
         translated=translated,
     )
-    generate_from_path(**options)
+    gen.generate_code(**options)

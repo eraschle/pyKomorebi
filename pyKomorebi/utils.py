@@ -26,7 +26,7 @@ def list_without_none_or_empty(*text: str | None, strip_chars: str | None = None
     values = [value for value in text if value is not None]
     if strip_chars is not None:
         values = strip_lines(values, strip_chars)
-    return [val for val in values if not is_none_or_empty(val, strip_chars)]
+    return [val for val in values if not is_none_or_empty(val)]
 
 
 def _clean_none_or_empty(lines: list[str], index: int, strip_chars: str | None = None) -> list[str]:
