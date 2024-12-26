@@ -1,23 +1,19 @@
-from abc import ABC, abstractmethod
 import re
+from abc import ABC, abstractmethod
 from typing import TypeGuard, Unpack
 
 from pyKomorebi import utils
 from pyKomorebi.creator import TranslationManager
 from pyKomorebi.creator.code import (
     ACodeFormatter,
-    FormatterArgs,
     ArgDoc,
+    FormatterArgs,
     IArgCreator,
     ICommandCreator,
     TArg,
 )
 from pyKomorebi.creator.docs import ADocCreator
-from pyKomorebi.model import (
-    ApiCommand,
-    CommandArgument,
-    CommandOption,
-)
+from pyKomorebi.model import ApiCommand, CommandArgument, CommandOption
 
 
 class AHKCodeFormatter(ACodeFormatter):
@@ -27,10 +23,13 @@ class AHKCodeFormatter(ACodeFormatter):
     def __init__(self, module_name: str, max_length: int) -> None:
         super().__init__(indent="  ", max_length=max_length, module_name=module_name)
 
+    def _new_line_indent(self, indent: str) -> str:
+        return indent
+
     def _clean_name(self, name: str) -> list[str]:
         name = self.pattern.sub(self.separator, name)
         names = [name.capitalize() for name in name.split(self.separator)]
-        return utils.list_without_none_or_empty(*names)
+        return utils.clean_blank(*names)
 
     def _concat_names(self, *names: str) -> str:
         return utils.as_string(*names, separator="")
@@ -42,21 +41,22 @@ class AHKCodeFormatter(ACodeFormatter):
 
     def name_to_doc(self, name: str, suffix: str | None = None) -> str:
         name = utils.as_string(*self._clean_name(name), separator="")
-        return self.apply_suffix(name, suffix)
+        return utils.ensure_ends_with(name, end_str=suffix)
 
     def concat_args(self, *args: str, quote: bool = False) -> str:
-        arg_names = utils.list_without_none_or_empty(*args)
+        arg_names = utils.clean_blank(*args)
         if quote:
             arg_names = [f"\"{arg}\"" for arg in args]
         return ", ".join(arg_names)
 
     def concat_cli_args(self, *args: str) -> str:
-        arg_names = utils.list_without_none_or_empty(*args)
+        arg_names = utils.clean_blank(*args)
         return " \" \" ".join(arg_names)
 
-    def function_name(self, name: str, private: bool = False) -> str:
+    def function_name(self, *name: str, private: bool = False) -> str:
         names = [self.module_name.capitalize()]
-        names += self._clean_name(name)
+        for func_name in name:
+            names += self._clean_name(func_name)
         if private:
             names[0] = f"_{names[0]}"
         return self._concat_names(*names)
@@ -64,6 +64,11 @@ class AHKCodeFormatter(ACodeFormatter):
     def cli_name(self, name: str) -> str:
         names = [name.lower() for name in self._clean_name(name)]
         return utils.as_string(*names, separator="-")
+
+    def find_prefix_in_code(self, line: str, **kw: Unpack[FormatterArgs]) -> int:
+        if " " not in line:
+            return -1
+        return kw.get("prefix", 0)
 
 
 def valid_values_of(values: list[str] | None) -> TypeGuard[list[str]]:
@@ -78,10 +83,10 @@ class AAutohotKeyCreator(ABC, IArgCreator[TArg]):
         self.formatter = formatter
 
     def to_arg(self, arg: TArg) -> str:
-        return self.formatter.name_to_code(arg.get_name())
+        return self.formatter.name_to_code(arg.name)
 
     def to_doc_name(self, arg: TArg, suffix: str | None) -> str:
-        doc_name = self.formatter.name_to_doc(arg.get_name(), suffix=suffix)
+        doc_name = self.formatter.name_to_doc(arg.name, suffix=suffix)
         if not doc_name.isupper():
             doc_name = doc_name.upper()
         return doc_name
@@ -90,7 +95,7 @@ class AAutohotKeyCreator(ABC, IArgCreator[TArg]):
         if len(self.elements) == 0:
             return line
         for elem in self.elements:
-            search = elem.get_name()
+            search = elem.name
             replace = self.to_doc_name(elem, suffix=None)
             line = line.replace(search, replace)
         return line
@@ -102,13 +107,7 @@ class AAutohotKeyCreator(ABC, IArgCreator[TArg]):
         return [self.arg_docstring(arg, **kw) for arg in self.elements]
 
     def valid_description(self, arg: TArg) -> list[str]:
-        return utils.list_without_none_or_empty(*arg.description)
-
-    def valid_possible_values(self, arg: TArg, strip_char: str | None) -> list[tuple[str, str | None]]:
-        values = []
-        for value in arg.possible_values:
-            values.append(utils.split_enum(value, pattern=utils.ENUM_PATTERN, strip_char=strip_char))
-        return values
+        return utils.clean_blank(*arg.description)
 
     @abstractmethod
     def to_arg_with_default(self, elem: TArg) -> str:
@@ -142,10 +141,10 @@ class AHKOptionCreator(AAutohotKeyCreator[CommandOption]):
 
     def arg_docstring(self, arg: CommandOption, **kw: Unpack[FormatterArgs]) -> ArgDoc:
         return ArgDoc(
-            name=arg.get_name(),
+            name=arg.name,
             default=self.default_value(arg, format_str=kw.get("default_format", None)),
             description=self.valid_description(arg),
-            possible_values=self.valid_possible_values(arg, strip_char=kw.get("separator", " ")),
+            possible_values=arg.possible_values,
         )
 
     def _if_expression(self, opt: CommandOption, level: int) -> str:
@@ -166,7 +165,7 @@ class AHKOptionCreator(AAutohotKeyCreator[CommandOption]):
         ]
 
     def _if_code_line(self, opt: CommandOption, manager: TranslationManager, level: int) -> list[str]:
-        opt_name = opt.name if opt.name is not None else opt.short
+        opt_name = opt.long if opt.long is not None else opt.short
         if opt_name is None:
             raise ValueError("Option must have a name or a short name")
         real_name = manager.option_name(opt_name)
@@ -206,13 +205,10 @@ class AHKArgumentCreator(AAutohotKeyCreator[CommandArgument]):
 
     def arg_docstring(self, arg: CommandArgument, **kw: Unpack[FormatterArgs]) -> ArgDoc:
         return ArgDoc(
-            name=arg.get_name(),
+            name=arg.name,
             default=self.default_value(arg, format_str=kw.get("default_format", None)),
             description=self.valid_description(arg),
-            possible_values=self.valid_possible_values(
-                arg,
-                strip_char=kw.get("separator", " "),
-            ),
+            possible_values=arg.possible_values,
         )
 
     def _if_expression(self, arg: CommandArgument, level: int) -> str:
@@ -232,7 +228,7 @@ class AHKArgumentCreator(AAutohotKeyCreator[CommandArgument]):
         ]
 
     def _if_code_line(self, arg: CommandArgument, manager: TranslationManager, level: int) -> list[str]:
-        opt_name = arg.name if arg.name is not None else arg.short
+        opt_name = arg.argument if arg.argument is not None else arg.short
         if opt_name is None:
             raise ValueError("Option must have a name or a short name")
         real_name = manager.option_name(opt_name)
@@ -274,7 +270,7 @@ class AHKCommandDocCreator(ADocCreator):
             return lines
         doc_lines = []
         if self.formatter.is_valid_line(first, **kw):
-            doc_lines.append(self.formatter.ensure_ends_with_point(first))
+            doc_lines.append(first)
         else:
             other_sentences.insert(0, first)
         other_sentences = self.ensure_sentences_has_valid_length(other_sentences, **kw)

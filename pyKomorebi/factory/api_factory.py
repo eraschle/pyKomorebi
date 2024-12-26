@@ -2,7 +2,7 @@ import re
 import itertools
 
 from pyKomorebi import utils
-from pyKomorebi.model import ApiCommand, CommandOption, CommandArgument
+from pyKomorebi.model import ApiCommand, CommandConstant, CommandOption, CommandArgument
 
 
 USAGE_LINE = "Usage:"
@@ -18,12 +18,14 @@ DEFAULT_PATTERN = re.compile(r".*(?P<complete>\[default:\s*(?P<default>\w*)\])",
 POSSIBLE_PATTERN = re.compile(r".*(?P<complete>\[possible values:\s*(?P<values>.*)\])", re.DOTALL)
 
 CLEANUP_PATTERN = [
-    re.compile(r"(\s*\(without.*?\)\s*)", re.DOTALL),
+    re.compile(r"(\s*\(without.*?\))", re.DOTALL),
 ]
 
 
-def find_line(doc_lines: list[str], search: str, lower_case: bool = False) -> tuple[int, str | None]:
-    for idx, line in enumerate(doc_lines):
+def find_line(lines: list[str], search: str, lower_case: bool = False) -> tuple[int, str | None]:
+    for idx, line in enumerate(lines):
+        if line is None:
+            continue
         search_value = line.lower() if lower_case else line
         if search not in search_value:
             continue
@@ -31,15 +33,14 @@ def find_line(doc_lines: list[str], search: str, lower_case: bool = False) -> tu
     return -1, None
 
 
-def _create_usage(doc_lines: list[str]) -> str | None:
-    idx, line = find_line(doc_lines, USAGE_LINE)
+def _create_usage(lines: list[str]) -> str | None:
+    idx, line = find_line(lines, USAGE_LINE)
     if idx < 0 or line is None:
         return None
     return line.replace(USAGE_LINE, "").strip()
 
 
-def _create_function_doc(doc_lines: list[str]) -> list[str]:
-    lines = list(doc_lines)
+def _create_function_doc(lines: list[str]) -> list[str]:
     idx, line = find_line(lines, ARGUMENT_LINE)
     if idx < 0 or line is None:
         idx, line = find_line(lines, OPTION_LINE)
@@ -48,19 +49,18 @@ def _create_function_doc(doc_lines: list[str]) -> list[str]:
     idx, line = find_line(lines, USAGE_LINE)
     if idx > 0 and line is not None:
         lines.pop(idx)
-    lines = utils.clean_none_or_empty(lines)
-    return utils.strip_lines(lines)
+    return lines
 
 
 def _get_lines(doc_lines: list[str], current: str, other: str) -> list[str]:
     idx, line = find_line(doc_lines, current)
     if idx < 0 or line is None:
         return []
-    lines = doc_lines[idx + 1 :]
+    lines = doc_lines[idx:]
     arg_idx, _ = find_line(lines, other)
     if arg_idx > 0:
         lines = lines[:arg_idx]
-    return utils.clean_none_or_empty(lines, strip_chars=None)
+    return lines
 
 
 def _match_pattern(line: str, patterns: list[re.Pattern]) -> re.Match | None:
@@ -104,18 +104,41 @@ def _get_default_value(doc_string: str) -> tuple[str, str | None]:
     return doc_string, default
 
 
-def _get_possible_values_regex(doc_string: str) -> tuple[str, list[str]]:
+ENUM_PATTERN = re.compile(r"(?P<name>\s*-\s?[-\w\s]*:)")
+
+
+def split_constant_string(text: str, strip_char: str = " ") -> tuple[str, list[str]]:
+    if ENUM_PATTERN.match(text) is None:
+        return utils.strip_value(text, strip_chars=strip_char), []
+    values = ENUM_PATTERN.split(text, maxsplit=1)
+    values = utils.clean_blank(*values, strip_chars=strip_char)
+    if len(values) == 0:
+        return utils.strip_value(text, strip_chars=strip_char), []
+    name = values.pop(0).removeprefix("-").removesuffix(":").strip()
+    return name, utils.clean_blank(*values, strip_chars=strip_char)
+
+
+def constant_from_lines(lines: list[str]) -> list[CommandConstant]:
+    constants = []
+    for value in lines:
+        name, desc = split_constant_string(value)
+        constants.append(CommandConstant(constant=name.strip(), description=desc))
+    return constants
+
+
+def _get_possible_values_regex(doc_string: str) -> tuple[str, list[CommandConstant]]:
     matched = POSSIBLE_PATTERN.match(doc_string)
     if matched is None:
         return doc_string, []
     complete = matched.group("complete")
     doc_string = doc_string.replace(complete, "").strip()
-    possible_values = utils.strip_lines(matched.group("values").split(","))
-    return doc_string, possible_values
+    matched_values = matched.group("values").split(",")
+    matched_values = utils.strip_lines(*matched_values)
+    return doc_string, constant_from_lines(matched_values)
 
 
-def _get_possible_values_startswith(doc_string: str) -> tuple[str, list[str]]:
-    doc_lines = doc_string.splitlines(keepends=False)
+def _get_possible_values_startswith(doc_string: str) -> tuple[str, list[CommandConstant]]:
+    doc_lines = utils.clean_blank(*doc_string.splitlines(keepends=False))
     idx, line = find_line(doc_lines, search="possible values:", lower_case=True)
     if idx < 0 or line is None:
         return doc_string, []
@@ -125,21 +148,23 @@ def _get_possible_values_startswith(doc_string: str) -> tuple[str, list[str]]:
         if not value.strip().startswith("-"):
             continue
         values.append(value)
-    return doc_string, utils.strip_lines(values)
+    values = utils.strip_lines(*values)
+    return doc_string, constant_from_lines(values)
 
 
-def _get_possible_values(doc_string: str) -> tuple[str, list[str]]:
+def _get_possible_values(doc_string: str) -> tuple[str, list[CommandConstant]]:
     doc_string, values = _get_possible_values_regex(doc_string)
     if len(values) == 0:
         doc_string, values = _get_possible_values_startswith(doc_string)
     return doc_string, values
 
 
-def _docs_default_and_values(doc_lines: list[str]) -> tuple[list[str], str | None, list[str]]:
-    doc_string = "\n".join(utils.clean_none_or_empty(doc_lines, strip_chars=None))
+def _docs_default_and_constants(doc_lines: list[str]) -> tuple[list[str], str | None, list[CommandConstant]]:
+    doc_string = "\n".join(utils.clean_blank(*doc_lines, strip_chars=None))
     doc_string, default = _get_default_value(doc_string)
     doc_string, possible_values = _get_possible_values(doc_string)
-    return doc_string.splitlines(keepends=False), default, possible_values
+    lines = utils.clean_blank(*doc_string.splitlines(keepends=False))
+    return lines, default, possible_values
 
 
 def _get_option_short_and_name(line: str) -> tuple[str | None, str | None, str | None, str]:
@@ -149,24 +174,24 @@ def _get_option_short_and_name(line: str) -> tuple[str | None, str | None, str |
     return option.group("short"), option.group("name"), option.group("arg"), option.group("description")
 
 
-def _create_options(doc_lines: list[str]) -> list[CommandOption]:
+def _create_options(doc_lines: list[str], strip_char: str) -> list[CommandOption]:
     option_lines = _get_lines(doc_lines, current=OPTION_LINE, other=ARGUMENT_LINE)
     option_indexes = _get_indexes(option_lines, [OPTION_PATTERN], "short", "name")
     options = []
     for start_idx, next_idx in itertools.pairwise(option_indexes):
-        short, name, arg_value, desc = _get_option_short_and_name(option_lines[start_idx])
+        short, long, arg_value, desc = _get_option_short_and_name(option_lines[start_idx])
         doc_lines = option_lines[start_idx + 1 : next_idx]
-        if utils.is_not_none_or_empty(desc):
+        if utils.is_not_blank(desc):
             doc_lines = [desc] + doc_lines
-        doc_lines, default, possible_values = _docs_default_and_values(doc_lines)
+        doc_lines, default, constants = _docs_default_and_constants(doc_lines)
         options.append(
             CommandOption(
-                short=utils.strip_value(short),
-                name=utils.strip_value(name),
-                value=utils.strip_value(arg_value),
-                description=utils.strip_lines(doc_lines),
-                default=utils.strip_value(default),
-                possible_values=utils.strip_lines(possible_values),
+                short=utils.strip_value(short, strip_chars=strip_char),
+                long=utils.strip_value(long, strip_chars=strip_char),
+                value=utils.strip_value(arg_value, strip_chars=strip_char),
+                description=utils.clean_blank(*doc_lines, strip_chars=strip_char),
+                default=utils.strip_value(default, strip_chars=strip_char),
+                possible_values=constants,
             )
         )
     return options
@@ -186,22 +211,22 @@ def _get_argument_name(line: str) -> tuple[str, bool, str | None]:
     return argument.group("name"), optional, argument.group("rest")
 
 
-def _create_arguments(doc_lines: list[str]) -> list[CommandArgument]:
+def _create_arguments(doc_lines: list[str], strip_char: str) -> list[CommandArgument]:
     args_lines = _get_lines(doc_lines, current=ARGUMENT_LINE, other=OPTION_LINE)
     args_indexes = _get_indexes(args_lines, [ARGS_PATTERN, ARGS_OPT_PATTERN], "name")
     args = []
     for start_idx, next_idx in itertools.pairwise(args_indexes):
         name, optional, rest = _get_argument_name(args_lines[start_idx])
         doc_lines = args_lines[start_idx + 1 : next_idx]
-        if utils.is_not_none_or_empty(rest):
+        if utils.is_not_blank(rest):
             doc_lines = [rest] + doc_lines
-        doc_lines, default, possible_values = _docs_default_and_values(doc_lines)
+        doc_lines, default, constants = _docs_default_and_constants(doc_lines)
         args.append(
             CommandArgument(
-                name=utils.strip_value(name),
-                description=utils.list_without_none_or_empty(*doc_lines),
-                default=utils.strip_value(default),
-                possible_values=utils.list_without_none_or_empty(*possible_values),
+                argument=utils.strip_value(name, strip_chars=strip_char),
+                description=utils.clean_blank(*doc_lines, strip_chars=strip_char),
+                default=utils.strip_value(default, strip_chars=strip_char),
+                possible_values=constants,
                 optional=optional,
             )
         )
@@ -213,8 +238,8 @@ def create_api_command(command_name: str, lines: list[str]) -> ApiCommand:
     lines = utils.clean_pattern_in(lines, CLEANUP_PATTERN)
     doc_string = _create_function_doc(lines)
     usage = _create_usage(lines)
-    options = _create_options(lines)
-    arguments = _create_arguments(lines)
+    options = _create_options(lines, strip_char=" ")
+    arguments = _create_arguments(lines, strip_char=" ")
     return ApiCommand(
         name=api_name,
         description=doc_string,

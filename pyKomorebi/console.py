@@ -26,7 +26,7 @@ def get_lines(lines: list[str], search: str | None) -> list[str]:
         return lines
     start_index = find_line_index(lines, search)
     start_index = start_index if start_index is not None else 0
-    return utils.list_without_none_or_empty(*lines[start_index + 1 :])
+    return utils.clean_blank(*lines[start_index + 1 :])
 
 
 def komorebic_commands(search: str = "Commands:") -> list[str]:

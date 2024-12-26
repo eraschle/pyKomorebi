@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 from datetime import datetime
 
-from pyKomorebi.creator.lisp.code import LispCodeFormatter
+
+from pyKomorebi import utils
+from pyKomorebi.creator.code import ICodeFormatter
 
 
 @dataclass(frozen=True)
@@ -10,13 +12,13 @@ class FunctionNames:
     execute_func_name: str = "execute"
     args_func_name: str = "args-get"
 
-    def executable_var(self, formatter: LispCodeFormatter) -> str:
+    def executable_var(self, formatter: ICodeFormatter) -> str:
         return formatter.function_name(self.executable_custom_var)
 
-    def execute_func(self, formatter: LispCodeFormatter) -> str:
+    def execute_func(self, formatter: ICodeFormatter) -> str:
         return formatter.function_name(self.execute_func_name)
 
-    def args_func(self, formatter: LispCodeFormatter) -> str:
+    def args_func(self, formatter: ICodeFormatter) -> str:
         return formatter.function_name(self.args_func_name, private=True)
 
 
@@ -28,11 +30,7 @@ class PackageInfo:
     user_name: str
     user_email: str
     emacs_version: str
-    formatter: LispCodeFormatter
-
-    @property
-    def module_name(self) -> str:
-        return self.formatter.module_name
+    formatter: ICodeFormatter
 
     @property
     def user_and_email(self) -> str:
@@ -49,10 +47,14 @@ class PackageInfo:
     def indent(self, line: str, level: int = 0) -> str:
         return self.formatter.indent(line, level)
 
+    def prefix(self, line: str, prefix: int) -> str:
+        column = self.formatter.column_prefix(prefix)
+        return utils.as_string(column, line, separator=" ")
+
 
 def _package_descriptions(info: PackageInfo) -> list[str]:
     lines = info.formatter.empty_line(count=0)
-    lines.append(info.indent(f";;; {info.module_name}.el --- Description -*- lexical-binding: t; -*-"))
+    lines.append(info.indent(f";;; {info.name}.el --- Description -*- lexical-binding: t; -*-"))
     lines.append(info.indent(";;"))
     lines.append(info.indent(f";; Copyright (C) {info.year} {info.user_name}"))
     lines.append(info.indent(";;"))
@@ -92,7 +94,7 @@ def _custom_executable(info: PackageInfo) -> list[str]:
     lines.append(info.indent(f"(defcustom {_executable_var(info)} \"\"", level=0))
     lines.append(info.indent("\"The path to the komorebi executable.\"", level=1))
     lines.append(info.indent(":type 'string", level=1))
-    lines.append(info.indent(f":group '{info.module_name})", level=1))
+    lines.append(info.indent(f":group '{info.name})", level=1))
     return lines
 
 
@@ -111,7 +113,7 @@ def _get_args_function(info: PackageInfo) -> list[str]:
     return lines
 
 
-def execute_func_name(formatter: LispCodeFormatter) -> str:
+def execute_func_name(formatter: ICodeFormatter) -> str:
     func_names = FunctionNames()
     return func_names.execute_func(formatter)
 
@@ -125,12 +127,15 @@ def _execute_command(info: PackageInfo) -> list[str]:
     lines.append(info.indent(f"(defun {execute_func(info)} (command &rest args)", level=0))
     lines.append(info.indent("\"Execute komorebi COMMAND with ARGS in shell.\"", level=1))
     lines.append(info.indent("(let ((shell-cmd (format \"%s %s %s\"", level=1))
-    lines.append(info.indent(f"      (shell-quote-argument {_executable_var(info)})", level=2))
-    lines.append(info.indent("      command", level=2))
-    lines.append(info.indent(f"      ({_args_func(info)} args))))", level=2))
-    lines.append(info.indent("(let ((result (shell-command-to-string shell-cmd)))", level=1))
-    lines.append(info.indent("(message \"Result %S of Command: %S\" shell-cmd result)", level=2))
-    lines.append(info.indent("result)))", level=1))
+    prefix = lines[-1].find("\"%s %s %s\"") - 1
+    lines.append(info.prefix(f"(shell-quote-argument {_executable_var(info)})", prefix=prefix))
+    lines.append(info.prefix("command", prefix=prefix))
+    lines.append(info.prefix(f"({_args_func(info)} args))))", prefix=prefix))
+    lines.append(info.indent("(let ((result (shell-command-to-string shell-cmd)))", level=2))
+    lines.append(info.indent("(if (string-empty-p result)", level=3))
+    lines.append(info.indent("(message \"Command: %S executed\" shell-cmd)", level=5))
+    lines.append(info.indent("(message \"Command %S executed with Result %S\" shell-cmd result))", level=4))
+    lines.append(info.indent("result)))", level=3))
     return lines
 
 
@@ -149,6 +154,6 @@ def pre_generator(info: PackageInfo) -> list[str]:
 
 def post_generator(info: PackageInfo) -> list[str]:
     lines = info.formatter.empty_line(count=0)
-    lines.append(info.indent(f"(provide '{info.module_name})"))
-    lines.append(info.indent(f";;; {info.module_name}.el ends here"))
+    lines.append(info.indent(f"(provide '{info.name})"))
+    lines.append(info.indent(f";;; {info.name}.el ends here"))
     return lines

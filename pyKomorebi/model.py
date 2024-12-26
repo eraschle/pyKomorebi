@@ -18,78 +18,115 @@ def _value(value: str | None) -> str | None:
 
 
 @dataclass
-class CommandArgs(ABC):
-    description: list[str]
-    default: str | None
-    possible_values: list[str]
+class CommandBase(ABC):
+    description: list[str] = field(compare=False, repr=False)
+    name: str = field(compare=True, repr=True, init=False)
 
     def __post_init__(self):
-        self.default = _value(self.default)
-        self.description = utils.list_without_none_or_empty(*self.description)
-        self.possible_values = utils.list_without_none_or_empty(*self.possible_values)
+        self.description = utils.clean_blank(*self.description, strip_chars=" ")
+        self.name = self._get_name()
 
     @abstractmethod
-    def get_name(self) -> str:
+    def _get_name(self) -> str:
         pass
 
-    def has_default(self) -> bool:
-        return self.default is not None
+    def has_description(self) -> bool:
+        return len(self.description) > 0
+
+
+@dataclass
+class CommandConstant(CommandBase):
+    constant: str = field(compare=True, repr=True)
+
+    def __post_init__(self):
+        super().__post_init__()
+
+    def _get_name(self) -> str:
+        return self.constant
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, CommandConstant):
+            return NotImplemented
+        return self.constant == other.constant
+
+    def __hash__(self) -> int:
+        return hash(self.constant)
+
+
+@dataclass
+class CommandArgs(CommandBase):
+    description: list[str]
+    default: str | None
+    possible_values: list[CommandConstant]
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.default = _value(self.default)
+        self.possible_values = [value for value in self.possible_values if value.name is not None]
 
     def has_possible_values(self) -> bool:
         return len(self.possible_values) > 0
+
+    def has_default(self) -> bool:
+        return self.default is not None
 
 
 @dataclass
 class CommandOption(CommandArgs):
     short: str | None
-    name: str | None
+    long: str | None
     value: str | None
 
     def __post_init__(self):
         super().__post_init__()
+        self.short = _value(self.short)
+        self.long = _value(self.long)
         self.value = _value(self.value)
-        self._short_name = None if self.short is None else self.short.removeprefix("-")
-        self._long_name = None if self.name is None else self.name.removeprefix("--")
 
     def has_value(self) -> bool:
         return self.value is not None
 
     def is_help(self) -> bool:
-        return self.name == "--help" or self.short == "-h"
+        return self.long == "--help" or self.short == "-h"
 
     @property
     def command_name(self) -> str:
-        if self.name is not None:
-            return self.name
+        if self.long is not None:
+            return self.long
         if self.short is not None:
             return self.short
         raise Exception("Option has neither short nor long name")
 
     @property
     def short_name(self) -> str | None:
-        return self._short_name
+        if self.short is None:
+            return None
+        return self.short.removeprefix("-")
 
     @property
     def long_name(self) -> str | None:
-        return self._long_name
+        if self.long is None:
+            return None
+        return self.long.removeprefix("--")
 
-    def get_name(self) -> str:
-        name = self.long_name or self.short_name
-        if name is None:
-            raise Exception("Option has neither short nor long name")
-        return name
+    def _get_name(self) -> str:
+        if self.long_name is not None:
+            return self.long_name
+        if self.short_name is not None:
+            return self.short_name
+        raise Exception("Option has neither short nor long name")
 
 
 @dataclass
 class CommandArgument(CommandArgs):
-    name: str
+    argument: str
     optional: bool
 
     def __post_init__(self):
         super().__post_init__()
 
-    def get_name(self) -> str:
-        return self.name
+    def _get_name(self) -> str:
+        return self.argument
 
 
 @dataclass(repr=True, order=True)
@@ -101,12 +138,19 @@ class ApiCommand:
     options: list[CommandOption] = field(compare=False, repr=False)
 
     def __post_init__(self):
-        self.description = utils.list_without_none_or_empty(*self.description)
+        self.description = utils.clean_blank(*self.description)
         self.usage = _value(self.usage)
+
+    def has_possible_values(self) -> bool:
+        args = self.arguments + self.options
+        return any(arg.has_possible_values() for arg in args)
 
     def remove_help_option(self):
         options = [opt for opt in self.options if not opt.is_help()]
         self.options = options
+
+    def has_arguments(self) -> bool:
+        return len(self.arguments) > 0
 
     def has_required_arguments(self) -> bool:
         return len(self.required_arguments) > 0
@@ -120,12 +164,10 @@ class ApiCommand:
 
     @property
     def optional_arguments(self) -> list[CommandArgs]:
-        optional: list[CommandArgs] = [arg for arg in self.arguments if arg.optional]
-        optional += sorted(self.options, key=lambda x: x.get_name())
+        optional: list[CommandArgs] = []
+        optional.extend([arg for arg in self.arguments if arg.optional])
+        optional.extend(self.options)
         return optional
 
     def has_options(self) -> bool:
         return len(self.options) > 0
-
-    def __len__(self):
-        return len(self.arguments) + len(self.options)

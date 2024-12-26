@@ -8,43 +8,37 @@ def strip_value(value, strip_chars: str | None = None) -> str:
     return str(value).strip(strip_chars)
 
 
-def strip_lines(lines: list[str], strip_chars: str | None = None) -> list[str]:
-    values = [strip_value(line, strip_chars) for line in lines]
-    return [value for value in values if len(value) > 0]
+def strip_lines(*line: str | None, strip_chars: str | None = None) -> list[str]:
+    if strip_chars is None:
+        return [line for line in line if is_not_blank(line)]
+    return [strip_value(val, strip_chars) for val in line]
 
 
-def is_none_or_empty(line: Any, strip_chars: str | None = None) -> bool:
+def is_not_blank(line: Any, strip_chars: str | None = None) -> TypeGuard[str]:
     if line is None:
-        return True
+        return False
     if not isinstance(line, str):
         line = str(line)
     if strip_chars is not None:
         line = strip_value(line, strip_chars)
-    return len(line) == 0
+    return len(line) > 0
 
 
-def is_not_none_or_empty(line: Any, strip_chars: str | None = None) -> TypeGuard[str]:
-    return not is_none_or_empty(line, strip_chars)
-
-
-def list_without_none_or_empty(*text: str | None, strip_chars: str | None = None) -> list[str]:
-    values = [value for value in text if value is not None]
+def clean_blank(*text: str | None, strip_chars: str | None = None) -> list[str]:
+    values = [value for value in text if is_not_blank(value)]
     if strip_chars is not None:
-        values = strip_lines(values, strip_chars)
-    return [val for val in values if not is_none_or_empty(val)]
+        values = strip_lines(*values, strip_chars=strip_chars)
+    return [val for val in values if is_not_blank(val)]
 
 
-def _clean_none_or_empty(lines: list[str], index: int, strip_chars: str | None = None) -> list[str]:
-    while len(lines) > 0 and is_none_or_empty(lines[index], strip_chars):
-        lines.pop(index)
-    return lines
+def ensure_ends_with(line: str, end_str: str | None) -> str:
+    if end_str is None or line.rstrip().endswith(end_str):
+        return line
+    return f"{line.rstrip()}{end_str}"
 
 
-def clean_none_or_empty(lines: list[str], strip_chars: str | None = None) -> list[str]:
-    lines = strip_lines(lines, strip_chars)
-    lines = _clean_none_or_empty(lines, index=0, strip_chars=strip_chars)
-    lines = _clean_none_or_empty(lines, index=-1, strip_chars=strip_chars)
-    return lines
+def quote(value: str, quote_str: str = "\"") -> str:
+    return f"{quote_str}{value}{quote_str}"
 
 
 def replace_double_quotes(lines: list[str]) -> list[str]:
@@ -89,14 +83,13 @@ def lines_as_str(*values: str) -> str:
     return as_string(*values, separator="\n")
 
 
-ENUM_PATTERN = re.compile(r"(?P<name>\s*-\s?[-\w\s]*:)")
+LAST_SPACE_REGEX = re.compile(r'\s+(?=(?:[^"\']*["\'][^"\']*["\'])*[^"\']*$)')
 
 
-def split_enum(text: str, pattern: re.Pattern, strip_char: str | None) -> tuple[str, str | None]:
-    if not pattern.match(text):
-        return strip_value(text, strip_chars=strip_char), None
-    values = pattern.split(text, maxsplit=1)
-    values = list_without_none_or_empty(*values, strip_chars=strip_char)
-    if len(values) == 0:
-        return strip_value(text, strip_chars=strip_char), None
-    return values[0], values[1]
+def last_space_index(text: str) -> int:
+    # Regulärer Ausdruck, um das letzte Leerzeichen außerhalb von Anführungszeichen zu finden
+    matched = re.search(LAST_SPACE_REGEX, text[::-1])
+    if matched is not None:
+        split_index = len(text) - matched.start()
+        return split_index
+    return -1

@@ -1,8 +1,11 @@
+import logging
 import argparse
 from pathlib import Path
 
 from pyKomorebi.creator import TranslationManager
 from pyKomorebi import generate as gen
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -42,7 +45,18 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
-if __name__ == '__main__':
+def configure_logger():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+    )
+    logger = logging.getLogger()
+    # logger.addHandler(app.get_tk_log_handler())
+    logger.info("Logger configured")
+
+
+def execute():
+    configure_logger()
     args = parse_arguments()
     translated = TranslationManager(
         option_map={
@@ -50,6 +64,11 @@ if __name__ == '__main__':
             "tcp": "tcp-port",
         },
         argument_map={},
+        variable_map={
+            "system": "komorebi-api-style-border",
+            "komorebi": "komorebi-api-style-mouse-follows",
+            "linear": "komorebi-api-style-animation",
+        },
     )
     options = gen.Options(
         language=args.language,
@@ -59,4 +78,9 @@ if __name__ == '__main__':
         exclude_names=["pipe", "socket", "tcp"],
         translated=translated,
     )
+    logger = logging.getLogger()
+    logger.info(f"Generate {args.language}:")
+    logger.info(f"From: {args.extension}")
+    logger.info(f"To: {args.export_path}")
     gen.generate_code(**options)
+    logger.info("Finished generating code")

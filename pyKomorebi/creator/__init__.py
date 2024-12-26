@@ -8,6 +8,8 @@ from pyKomorebi.model import ApiCommand
 class TranslationManager:
     option_map: dict[str, str]
     argument_map: dict[str, str]
+    # by now the first value is the key...
+    variable_map: dict[str, str]
 
     def option_name(self, name: str) -> str:
         prefix = "--" if name.startswith("--") else "-"
@@ -21,6 +23,14 @@ class TranslationManager:
         if name not in self.argument_map:
             return name
         return self.argument_map[name]
+
+    def has_variable(self, values: tuple[str, ...]) -> bool:
+        return values[0] in self.variable_map
+
+    def variable_name(self, values: tuple[str, ...]) -> str:
+        if values[0] not in self.variable_map:
+            raise ValueError(f"Variable {values[0]} not found.")
+        return self.variable_map[values[0]]
 
 
 class ICodeCreator(Protocol):
