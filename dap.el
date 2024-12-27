@@ -2,14 +2,15 @@
 
 (dap-register-debug-template
  "LISP code-gen"
- (list :name "LISP gen"
+ (list :name "LISP code-gen"
        :type "python"
-       :args '("--import-path" "C:\\workspace\\komorebi\\docs\\cli\\"
-               "--extension" "cmd"
-               "--language" "lisp"
-               "--export-path" "C:\\workspace\\lisp\\komorebi\\komorebi-api.el"
-               )
-       :cwd "c:\\workspace\\python\\private\\pyKomorebi\\"
+       :args (list
+              "--extension" "cmd"
+              "--language" "lisp"
+              "--export-path" "C:/workspace/lisp/komorebi/komorebi-api.el"
+              "--emacs"
+              )
+       :cwd "c:/workspace/python/private/pyKomorebi"
        :module "code_gen"
        :program nil
        :request "launch"))

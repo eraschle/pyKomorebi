@@ -123,18 +123,19 @@ def execute_func(info: PackageInfo) -> str:
 
 
 def _execute_command(info: PackageInfo) -> list[str]:
+    exe_path = _executable_var(info)
     lines = info.formatter.empty_line(count=2)
     lines.append(info.indent(f"(defun {execute_func(info)} (command &rest args)", level=0))
     lines.append(info.indent("\"Execute komorebi COMMAND with ARGS in shell.\"", level=1))
     lines.append(info.indent("(let ((shell-cmd (format \"%s %s %s\"", level=1))
     prefix = lines[-1].find("\"%s %s %s\"") - 1
-    lines.append(info.prefix(f"(shell-quote-argument {_executable_var(info)})", prefix=prefix))
+    lines.append(info.prefix(f"(shell-quote-argument {exe_path})", prefix=prefix))
     lines.append(info.prefix("command", prefix=prefix))
     lines.append(info.prefix(f"({_args_func(info)} args))))", prefix=prefix))
     lines.append(info.indent("(let ((result (shell-command-to-string shell-cmd)))", level=2))
     lines.append(info.indent("(if (string-empty-p result)", level=3))
-    lines.append(info.indent("(message \"Command: %S executed\" shell-cmd)", level=5))
-    lines.append(info.indent("(message \"Command %S executed with Result %S\" shell-cmd result))", level=4))
+    lines.append(info.indent(f"(message \"Command: %S executed\" {exe_path})", level=5))
+    lines.append(info.indent(f"(message \"Command %S executed with Result %s\" {exe_path} result))", level=4))
     lines.append(info.indent("result)))", level=3))
     return lines
 
