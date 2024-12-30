@@ -11,6 +11,7 @@ class FunctionNames:
     executable_custom_var: str = "executable"
     execute_func_name: str = "execute"
     args_func_name: str = "args-get"
+    get_path_func_name: str = "path-get"
     config_home_func_name: str = "config-home"
 
     def executable_var(self, formatter: ICodeFormatter) -> str:
@@ -24,6 +25,9 @@ class FunctionNames:
 
     def config_home_func(self, formatter: ICodeFormatter) -> str:
         return formatter.function_name(self.config_home_func_name, private=True)
+
+    def get_path_func(self, formatter: ICodeFormatter) -> str:
+        return formatter.function_name(self.get_path_func_name, private=True)
 
 
 @dataclass
@@ -144,6 +148,22 @@ def _execute_command(info: PackageInfo) -> list[str]:
     return lines
 
 
+def get_path_func(formatter: ICodeFormatter) -> str:
+    func_names = FunctionNames()
+    return func_names.get_path_func(formatter)
+
+
+def _get_path_function(info: PackageInfo) -> list[str]:
+    lines = info.formatter.empty_line(count=2)
+    lines.append(info.indent(f"(defun {get_path_func(info.formatter)} (current-path)", level=0))
+    lines.append(info.indent("\"Return the CURRENT-PATH with slashes instead of backslashes.\"", level=1))
+    lines.append(info.indent("(let ((path (string-replace \"\\\\\" \"/\" current-path)))", level=1))
+    lines.append(info.indent("(unless (string-suffix-p \"/\" path)", level=2))
+    lines.append(info.indent("(setq path (concat path \"/\")))", level=3))
+    lines.append(info.indent("path))", level=2))
+    return lines
+
+
 def config_home_func(formatter: ICodeFormatter) -> str:
     func_names = FunctionNames()
     return func_names.config_home_func(formatter)
@@ -157,10 +177,13 @@ def _config_home_function(info: PackageInfo) -> list[str]:
     prefix = lines[-1].find("(config-path") - 1
     lines.append(info.prefix("(user-profile (getenv \"USERPROFILE\")))", prefix=prefix))
     lines.append(info.indent("(if (and config-path (file-directory-p config-path))", level=2))
-    lines.append(info.indent("(string-replace \"\\\\\" \"/\" config-path)", level=4))
-    lines.append(info.indent("(setq config-path (concat user-profile \".config\" \".komorebi\"))", level=3))
+    func_name = get_path_func(info.formatter)
+    lines.append(info.indent(f"({func_name} config-path)", level=4))
+    lines.append(
+        info.indent("(setq config-path (concat user-profile \".config\" \".komorebi\"))", level=3)
+    )
     lines.append(info.indent("(if (file-directory-p config-path)", level=3))
-    lines.append(info.indent("(string-replace \"\\\\\" \"/\" config-path)", level=5))
+    lines.append(info.indent(f"({func_name} config-path)", level=5))
     lines.append(info.indent("nil))))", level=4))
     return lines
 
@@ -172,6 +195,7 @@ def pre_generator(info: PackageInfo) -> list[str]:
     lines.extend(_custom_executable(info))
     lines.extend(_get_args_function(info))
     lines.extend(_execute_command(info))
+    lines.extend(_get_path_function(info))
     lines.extend(_config_home_function(info))
     lines.extend(info.formatter.empty_line(count=2))
     lines.append(";;")
