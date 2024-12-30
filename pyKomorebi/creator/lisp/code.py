@@ -1,6 +1,6 @@
 import re
 from abc import abstractmethod
-from typing import Iterable, TypeGuard, Unpack
+from typing import Callable, Iterable, TypeGuard, Unpack
 
 from pyKomorebi import utils
 from pyKomorebi.creator import TranslationManager
@@ -35,12 +35,6 @@ class LispCodeFormatter(ACodeFormatter):
         name = self.pattern.sub(self.separator, name)
         return name.removeprefix(self.separator).removesuffix(self.separator)
 
-    def _new_line_indent(self, indent: str) -> str:
-        columns = len(indent) - (len(self.indent_str) // 2)
-        if columns <= 0:
-            return indent
-        return self.column_prefix(columns)
-
     def name_to_code(self, name: str) -> str:
         if not (name.startswith("(") and name.endswith(")")):
             name = self._clean_name(name)
@@ -55,23 +49,29 @@ class LispCodeFormatter(ACodeFormatter):
         return " ".join(arg_names)
 
     def function_name(self, *name: str, private: bool = False) -> str:
-        names = [self.separator] if private else []
-        names.extend([self.name_to_code(n) for n in name])
+        names = [self.name_to_code(n) for n in name]
         module_name = self.name_to_code(self.module_name)
+        if private:
+            module_name = f"{module_name}{self.separator}"
         return self.separator.join([module_name, *names])
 
+    def _get_prefix(self, prefix: int, line: str) -> int:
+        if prefix == self.prefix_of(line):
+            return prefix + 1
+        return prefix
+
     def find_prefix_in_code(self, line: str, **kw: Unpack[FormatterArgs]) -> int:
-        if not kw.get("is_code", False):
+        if not kw.get("is_code", False) or len(line) == 0:
             return kw.get("prefix", 0)
         last_space = utils.last_space_index(line)
         if last_space > 0:
-            return last_space
+            return self._get_prefix(last_space, line)
         last_bracket = line.rfind("(")
         next_space = line.find(" ", last_bracket)
         if next_space > 0:
-            return next_space
+            return self._get_prefix(next_space, line)
         if last_bracket > 0:
-            return last_bracket
+            return self._get_prefix(last_space, line)
         raise ValueError(f"Could not find prefix in line: {line}")
 
 
@@ -81,10 +81,237 @@ def valid_values_of(values: list[str] | None) -> TypeGuard[list[str]]:
     return len(values) > 0
 
 
-class ALispArgCreator(IArgCreator[TArg]):
-    def __init__(self, elements: list[TArg], formatter: LispCodeFormatter) -> None:
-        self.elements = elements
+class LispPackageHandler:
+    def __init__(self, formatter: LispCodeFormatter, translation: TranslationManager) -> None:
         self.formatter = formatter
+        self.translation = translation
+        self._variables = {}
+
+    def _get_names(self, arg: CommandArgs) -> tuple[str, ...]:
+        return tuple([value.name for value in arg.possible_values])
+
+    def add(self, arg: CommandArgs):
+        if not arg.has_possible_values():
+            return
+        value_tuple = self._get_names(arg)
+        if value_tuple in self._variables:
+            return
+        name = self.formatter.function_name(arg.name)
+        self._variables[value_tuple] = name
+
+    def items(self) -> Iterable[tuple[str, tuple[str, ...]]]:
+        for value in self._variables:
+            name = self._variables[value]
+            if self.translation.has_variable(value):
+                name = self.translation.variable_name(value)
+            yield name, value
+
+    def exists(self, arg: CommandArgs) -> bool:
+        if not arg.has_possible_values():
+            return False
+        return self._get_names(arg) in self._variables
+
+    def get(self, arg: CommandArgs, as_symbol: bool) -> str:
+        values = self._get_names(arg)
+        if values not in self._variables:
+            raise ValueError(f"No name found for values: {values}")
+        var_name = self._variables[values]
+        if self.translation.has_variable(values):
+            var_name = self.translation.variable_name(values)
+        if as_symbol:
+            return f"'{var_name}"
+        return var_name
+
+
+class CompletingHandler:
+    read_number = [
+        ("zero-indexed",),
+        ("number",),
+        ("border",),
+        ("pixel", "integer"),
+        ("size", "offset"),
+        ("size", "monitor"),
+        ("red",),
+        ("green",),
+        ("blue",),
+        ("duration",),
+        ("delta", "pixel", "resizing"),
+        ("alpha",),
+        (
+            "tcp",
+            "server",
+            "start",
+        ),
+    ]
+    read_name = [
+        ("string",),
+        ("workspace","name", ),
+        ("display", "name",),
+        ("socket", "name",),
+        ("pipe", "name",),
+    ]
+    read_path = [
+        (
+            "configuration",
+            "static",
+        ),
+        ("yaml", "file",),
+        ("file", "resize"),
+    ]
+    read_boolean = [
+        ("whkd",),
+        ("ahk",),
+        ("autohotkey",),
+        ("komorebi-bar",),
+        ("masir",),
+        (
+            "wait",
+            "komorebic",
+            "complete-configuration",
+        ),
+        ("auto-apply", "dumped", "temp", "file"),
+    ]
+
+    def __init__(self, handler: LispPackageHandler, creator: "ALispArgCreator"):
+        self.handler = handler
+        self.creator = creator
+        self._factory = self._create_factory()
+
+    def _create_factory(self) -> list[tuple[Callable[[CommandArgs], bool], Callable[[CommandArgs], list[str]]]]:
+        return [
+            (self.is_read_variable, self.completing_variable),
+            (self.is_read_number, self.completing_number),
+            (self.is_read_string, self.completing_string),
+            (self.is_read_path, self.completing_path),
+            (self.is_read_boolean, self.completing_boolean),
+        ]
+
+    def is_read_variable(self, arg: CommandArgs) -> bool:
+        return self.handler.exists(arg)
+
+    def completing_variable(self, arg: CommandArgs) -> list[str]:
+        default = arg.default if arg.has_default() else "nil"
+        name = self.creator.to_doc_name(arg, suffix=None)
+        prompt = f'"Enter value for {name}: "'
+        return [
+            f"(completing-read {prompt}",
+            self.handler.get(arg, as_symbol=False),
+            f"nil t {default})",
+        ]
+
+    def _is_optional(self, arg: CommandArgs) -> bool:
+        if isinstance(arg, CommandOption) or not isinstance(arg, CommandArgument):
+            return True
+        return arg.optional
+
+    def _get_description(self, arg: CommandArgs, suffix: str) -> str:
+        if utils.has_sentence(*arg.description):
+            description = utils.get_sentences(*arg.description)[0]
+        else:
+            description = utils.as_string(*arg.description, separator=" ")
+        description = description.rstrip().removesuffix(".")
+        doc_name = self.creator.to_doc_name(arg, suffix=None)
+        description = f"{doc_name}: {description}"
+        return f"\"{description}{suffix}\""
+
+    def _create_read(self, arg: CommandArgs, suffix: str) -> list[str]:
+        if not arg.has_description():
+            return []
+        description = self._get_description(arg, suffix=":")
+        return [f"(read-{suffix} {description})"]
+
+    def _is_read(self, line: str, values: tuple[str, ...]) -> bool:
+        line = line.lower()
+        for value in values:
+            if value in line:
+                continue
+            return False
+        return True
+
+    def _is_read_boolean(self, line: str) -> bool:
+        return any(self._is_read(line, values) for values in self.read_boolean)
+
+    def is_read_boolean(self, arg: CommandArgs) -> bool:
+        if not arg.has_description():
+            return False
+        return any(self._is_read_boolean(line) for line in arg.description)
+
+    def completing_boolean(self, arg: CommandArgs) -> list[str]:
+        description = self._get_description(arg, suffix="?")
+        return [f"(y-or-n-p {description})"]
+
+    def _is_read_number(self, line: str) -> bool:
+        return any(self._is_read(line, values) for values in self.read_number)
+
+    def is_read_number(self, arg: CommandArgs) -> bool:
+        if not arg.has_description():
+            return False
+        return any(self._is_read_number(line) for line in arg.description)
+
+    def completing_number(self, arg: CommandArgs) -> list[str]:
+        if not arg.has_description():
+            return []
+        description = self._get_description(arg, suffix=":")
+        default_value = "-1" if self._is_optional(arg) else "nil"
+        return [f"(read-number {description} {default_value})"]
+
+    def _is_read_string(self, line: str) -> bool:
+        return any(self._is_read(line, values) for values in self.read_name)
+
+    def is_read_string(self, arg: CommandArgs) -> bool:
+        if not arg.has_description():
+            return False
+        return any(self._is_read_string(line) for line in arg.description)
+
+    def completing_string(self, arg: CommandArgs) -> list[str]:
+        if not arg.has_description():
+            return []
+        description = self._get_description(arg, suffix=":")
+        default_value = "-" if self._is_optional(arg) else "nil"
+        return [f"(read-string {description} nil nil {default_value})"]
+
+    def is_read_path(self, arg: CommandArgs) -> bool:
+        for line in arg.description:
+            if not any(self._is_read(line, values) for values in self.read_path):
+                continue
+            return True
+        return False
+
+    def completing_path(self, arg: CommandArgs) -> list[str]:
+        if not self.is_read_path(arg):
+            return []
+        description = self._get_description(arg, suffix=":")
+        must_match = "nil" if self._is_optional(arg) else "t"
+        return [
+            f"(read-file-name {description} ",
+            f"({pkg.config_home_func(self.creator.formatter)})",
+            f"nil {must_match})",
+        ]
+
+    def is_completing(self, arg: CommandArgs) -> bool:
+        for is_read, _ in self._factory:
+            if not is_read(arg):
+                continue
+            return True
+        return False
+
+    def completing(self, arg: CommandArgs, **kwargs) -> list[str]:
+        for is_read, completing in self._factory:
+            if not is_read(arg):
+                continue
+            return completing(arg, **kwargs)
+        return []
+
+
+class ALispArgCreator(IArgCreator[TArg]):
+    def __init__(self, elements: list[TArg], handler: LispPackageHandler) -> None:
+        self.elements = elements
+        self.handler = handler
+        self.completing = CompletingHandler(handler, self)
+
+    @property
+    def formatter(self) -> LispCodeFormatter:
+        return self.handler.formatter
 
     def valid_description(self, arg: TArg, strip_char: str | None = None) -> list[str]:
         return utils.clean_blank(*arg.description, strip_chars=strip_char)
@@ -123,27 +350,15 @@ class ALispArgCreator(IArgCreator[TArg]):
             return True
         return all([self.can_arg_be_interactive(arg) for arg in self.elements])
 
-    def interactive_value_of(self, arg: TArg, handler: "LispVariableHandler") -> list[str]:
-        default = arg.default if arg.has_default() else "nil"
-        prompt = f"\"Enter value for {arg.name}: \""
-        return [
-            f"(completing-read {prompt}",
-            handler.get(arg, as_symbol=False),
-            f"nil t {default})",
-        ]
+    def interactive_value_of(self, arg: TArg) -> list[str]:
+        return self.completing.completing(arg)
 
-    def interactive_values(self, handler: "LispVariableHandler") -> list[list[str]]:
+    def interactive_values(self) -> list[list[str]]:
         args = [arg for arg in self.elements if self.can_arg_be_interactive(arg)]
-        return [self.interactive_value_of(arg, handler) for arg in args]
+        return [self.interactive_value_of(arg) for arg in args]
 
 
 class OptionCreator(ALispArgCreator[CommandOption]):
-    def __init__(
-        self, elements: list[CommandOption], formatter: LispCodeFormatter, interactive_names: list[str]
-    ) -> None:
-        super().__init__(elements, formatter)
-        self.interactive_names = interactive_names
-
     def to_args(self) -> list[str]:
         return [self.to_arg(arg) for arg in self.elements]
 
@@ -159,11 +374,9 @@ class OptionCreator(ALispArgCreator[CommandOption]):
         )
 
     def can_arg_be_interactive(self, arg: CommandOption) -> bool:
-        if arg.has_possible_values():
+        if arg.has_possible_values() or arg.has_default():
             return True
-        if len(self.interactive_names) == 0:
-            return False
-        return arg.name in self.interactive_names
+        return self.completing.is_completing(arg)
 
 
 class ArgumentCreator(ALispArgCreator[CommandArgument]):
@@ -194,7 +407,7 @@ class ArgumentCreator(ALispArgCreator[CommandArgument]):
         )
 
     def can_arg_be_interactive(self, arg: CommandArgument) -> bool:
-        return arg.has_default() or arg.has_possible_values()
+        return arg.has_default() or arg.has_possible_values() or self.completing.is_completing(arg)
 
 
 class LispCommandDocCreator(ADocCreator):
@@ -230,98 +443,21 @@ class LispCommandDocCreator(ADocCreator):
         return doc_lines
 
 
-class LispVariableHandler:
-    def __init__(self) -> None:
-        self._manager: TranslationManager | None = None
-        self._formatter: LispCodeFormatter | None = None
-        self._variables = {}
+class LispCommandCreator(ICommandCreator):
+    def __init__(self, command: ApiCommand, variables: LispPackageHandler) -> None:
+        self.command = command
+        self.handler = variables
+        self.opt = OptionCreator(command.options, variables)
+        self.arg = ArgumentCreator(command.arguments, variables)
+        self.doc = LispCommandDocCreator(formatter=variables.formatter)
 
     @property
     def formatter(self) -> LispCodeFormatter:
-        if self._formatter is None:
-            raise ValueError("Formatter not set")
-        return self._formatter
-
-    @formatter.setter
-    def formatter(self, formatter: LispCodeFormatter) -> None:
-        self._formatter = formatter
+        return self.handler.formatter
 
     @property
-    def translation(self) -> TranslationManager:
-        if self._manager is None:
-            raise ValueError("Translation not set")
-        return self._manager
-
-    @translation.setter
-    def translation(self, manager: TranslationManager) -> None:
-        self._manager = manager
-
-    def _get_names(self, arg: CommandArgs) -> tuple[str, ...]:
-        return tuple([value.name for value in arg.possible_values])
-
-    def add(self, arg: CommandArgs):
-        if not arg.has_possible_values():
-            return
-        value_tuple = self._get_names(arg)
-        if value_tuple in self._variables:
-            return
-        name = self.formatter.function_name(arg.name)
-        self._variables[value_tuple] = name
-
-    def items(self) -> Iterable[tuple[str, tuple[str, ...]]]:
-        for value in self._variables:
-            name = self._variables[value]
-            if self.translation.has_variable(value):
-                name = self.translation.variable_name(value)
-            yield name, value
-
-    def exists(self, arg: CommandArgs) -> bool:
-        if not arg.has_possible_values():
-            return False
-        return self._get_names(arg) in self._variables
-
-    def get(self, arg: CommandArgs, as_symbol: bool) -> str:
-        values = self._get_names(arg)
-        if values not in self._variables:
-            raise ValueError(f"No name found for values: {values}")
-        var_name = self._variables[values]
-        if self.translation.has_variable(values):
-            var_name = self.translation.variable_name(values)
-        if as_symbol:
-            return f"'{var_name}"
-        return var_name
-
-
-class LispCommandCreator(ICommandCreator):
-    variables = LispVariableHandler()
-
-    @classmethod
-    def add(cls, arg: CommandArgs):
-        cls.variables.add(arg)
-
-    @classmethod
-    def has_variable_name(cls, arg: CommandArgs) -> bool:
-        return cls.variables.exists(arg)
-
-    @classmethod
-    def variable_name(cls, arg: CommandArgs, as_symbol: bool = True) -> str:
-        return cls.variables.get(arg, as_symbol=as_symbol)
-
-    @classmethod
-    def set_formatter(cls, formatter: LispCodeFormatter) -> None:
-        cls.variables.formatter = formatter
-
-    @classmethod
-    def set_translation(cls, manager: TranslationManager) -> None:
-        cls.variables.translation = manager
-
-    def __init__(self, command: ApiCommand, formatter: LispCodeFormatter, manager: TranslationManager) -> None:
-        self.command = command
-        self.formatter = formatter
-        self.manager = manager
-        self.opt = OptionCreator(command.options, formatter, interactive_names=[])
-        self.arg = ArgumentCreator(command.arguments, formatter)
-        self.doc = LispCommandDocCreator(formatter=formatter)
+    def manager(self) -> TranslationManager:
+        return self.handler.translation
 
     def is_interactive(self) -> bool:
         return self.arg.can_be_interactive() and self.opt.can_be_interactive()
@@ -404,25 +540,25 @@ class LispCommandCreator(ICommandCreator):
         if not self.is_interactive():
             return []
         kw = code_utils.copy_args(kw, level=1, separator=kw["separator"])
-        values = self.arg.interactive_values(self.variables) + self.opt.interactive_values(self.variables)
+        values = self.arg.interactive_values() + self.opt.interactive_values()
         if len(values) == 0:
             return [self.formatter.indent("(interactive)", level=kw.get("level", 1))]
         helper = ListHelper[list[str]](self.formatter)
-        with helper.with_context(
-            previous_code="(interactive",
-            items=values,
-            **kw,
-        ) as ctx:
-            if not ctx.found_solution():
-                print(f"Could not find solution for interactive in {self.command.name}")
-            ctx.create()
+        with helper.with_context(previous_code="(interactive", items=values, **kw) as ctx:
+            if ctx.can_create_all_on(second_line=False):
+                ctx.create()
+            elif ctx.can_create_with_first_on(second_line=False):
+                ctx.create()
+            else:
+                ctx.create_with_list_on_second_line()
+                ctx.create()
         lines = helper.as_list()
         lines[-1] = lines[-1].rstrip() + ")"
         return lines
 
     def _get_check_value_code_line(self, argument: CommandArgument, level: int) -> str:
         arg_name = self.arg.to_arg(argument)
-        var_name = self.variable_name(argument, as_symbol=False)
+        var_name = self.handler.get(argument, as_symbol=False)
         code_line = f"(unless (member {arg_name} {var_name})"
         return self.formatter.indent(code_line, level=level)
 
@@ -468,8 +604,8 @@ class LispCommandCreator(ICommandCreator):
 
     def _set_option_line(self, option: CommandOption, **kw: Unpack[FormatterArgs]) -> list[str]:
         arg_name = self.opt.to_arg(option)
-        if self.has_variable_name(option):
-            var_name = self.variable_name(option, as_symbol=False)
+        if self.handler.exists(option):
+            var_name = self.handler.get(option, as_symbol=False)
             lines = [self._expression(f"when (member {arg_name} {var_name})", **kw)]
         else:
             lines = [self._expression(f"when {arg_name}", **kw)]

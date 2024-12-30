@@ -1,13 +1,10 @@
-import os
-import sys
-import platform
-
-import logging
 import argparse
+import logging
+import sys
 from pathlib import Path
 
-from pyKomorebi.creator import TranslationManager
 from pyKomorebi import generate as gen
+from pyKomorebi.creator import TranslationManager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -59,7 +56,7 @@ def configure_logger():
     logger.info("Logger configured")
 
 
-def execute():
+def generate():
     configure_logger()
     args = parse_arguments()
     translated = TranslationManager(
@@ -97,4 +94,4 @@ if __name__ == '__main__':
         print(f"Removed: {first}")
         first = sys.argv.pop(-1)
 
-    execute()
+    generate()

@@ -2,11 +2,13 @@
 
 
 def get(extension: str):
-    if extension.endswith("cmd"):
+    if not extension.startswith("."):
+        raise ValueError(f"Extension '{extension}' must start with a period")
+    if extension.endswith(".cmd"):
         from pyKomorebi.factory import console
 
         return console.import_api
-    if extension.endswith("md"):
+    if extension.endswith(".md"):
         from pyKomorebi.factory import markdown
 
         return markdown.import_api

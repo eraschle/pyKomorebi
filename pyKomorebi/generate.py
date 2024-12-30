@@ -17,7 +17,7 @@ class Options(TypedDict):
 def _generate_code(commands: Iterable[ApiCommand | None], **kwargs: Unpack[Options]) -> None:
     code = creator.get(**kwargs)
     commands = [cmd for cmd in commands if cmd is not None]
-    lines = code.generate(commands)
+    lines = code.generate(sorted(commands, key=lambda x: x.name))
     with open(kwargs["export_path"], "w") as export_file:
         content = "\n".join(lines)
         export_file.write(content)

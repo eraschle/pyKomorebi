@@ -23,7 +23,7 @@ class CommandBase(ABC):
     name: str = field(compare=True, repr=True, init=False)
 
     def __post_init__(self):
-        self.description = utils.clean_blank(*self.description, strip_chars=" ")
+        self.description = utils.strip_and_clean_blank(*self.description, strip_chars=" ")
         self.name = self._get_name()
 
     @abstractmethod
@@ -138,7 +138,7 @@ class ApiCommand:
     options: list[CommandOption] = field(compare=False, repr=False)
 
     def __post_init__(self):
-        self.description = utils.clean_blank(*self.description)
+        self.description = utils.strip_and_clean_blank(*self.description)
         self.usage = _value(self.usage)
 
     def has_possible_values(self) -> bool:

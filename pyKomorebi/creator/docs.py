@@ -1,4 +1,3 @@
-import re
 from abc import ABC
 from typing import Unpack
 
@@ -7,19 +6,14 @@ from pyKomorebi.creator.code import ArgDoc, FormatterArgs, ICodeFormatter, IDocC
 
 
 class ADocCreator(ABC, IDocCreator):
-    sentence_split = re.compile(r"(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s")
-
     def __init__(self, formatter: ICodeFormatter):
         self.formatter = formatter
 
-    def has_sentence(self, value: str | list[str]) -> bool:
-        if isinstance(value, str):
-            value = [value]
-        return any(self.sentence_split.match(line) is not None for line in value)
+    def has_sentence(self, *value: str) -> bool:
+        return utils.has_sentence(*value)
 
     def get_first_sentence_and_rest(self, lines: list[str]) -> tuple[str | None, list[str]]:
-        text = utils.as_string(*lines, separator=" ")
-        sentences = self.sentence_split.split(text)
+        sentences = utils.get_sentences(*lines)
         if len(sentences) == 0:
             return None, lines
         if len(sentences) == 1:

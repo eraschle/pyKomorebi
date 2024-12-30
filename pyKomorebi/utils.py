@@ -20,15 +20,17 @@ def is_not_blank(line: Any, strip_chars: str | None = None) -> TypeGuard[str]:
     if not isinstance(line, str):
         line = str(line)
     if strip_chars is not None:
-        line = strip_value(line, strip_chars)
+        line = line.strip(strip_chars)
     return len(line) > 0
 
 
+def strip_and_clean_blank(*text: str | None, strip_chars: str | None = None) -> list[str]:
+    values = strip_lines(*text, strip_chars=strip_chars)
+    return [val for val in values if is_not_blank(val, strip_chars=strip_chars)]
+
+
 def clean_blank(*text: str | None, strip_chars: str | None = None) -> list[str]:
-    values = [value for value in text if is_not_blank(value)]
-    if strip_chars is not None:
-        values = strip_lines(*values, strip_chars=strip_chars)
-    return [val for val in values if is_not_blank(val)]
+    return [val for val in text if is_not_blank(val, strip_chars=strip_chars)]
 
 
 def ensure_ends_with(line: str, end_str: str | None) -> str:
@@ -93,3 +95,16 @@ def last_space_index(text: str) -> int:
         split_index = len(text) - matched.start()
         return split_index
     return -1
+
+
+SENTENCE_SPLIT = re.compile(r"(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s")
+
+
+def has_sentence(*text: str) -> bool:
+    line = as_string(*text, separator=" ")
+    return SENTENCE_SPLIT.search(line) is not None
+
+
+def get_sentences(*text: str) -> list[str]:
+    line = as_string(*text, separator=" ")
+    return SENTENCE_SPLIT.split(line)

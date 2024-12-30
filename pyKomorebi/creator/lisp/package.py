@@ -11,15 +11,19 @@ class FunctionNames:
     executable_custom_var: str = "executable"
     execute_func_name: str = "execute"
     args_func_name: str = "args-get"
+    config_home_func_name: str = "config-home"
 
     def executable_var(self, formatter: ICodeFormatter) -> str:
         return formatter.function_name(self.executable_custom_var)
 
     def execute_func(self, formatter: ICodeFormatter) -> str:
-        return formatter.function_name(self.execute_func_name)
+        return formatter.function_name(self.execute_func_name, private=True)
 
     def args_func(self, formatter: ICodeFormatter) -> str:
         return formatter.function_name(self.args_func_name, private=True)
+
+    def config_home_func(self, formatter: ICodeFormatter) -> str:
+        return formatter.function_name(self.config_home_func_name, private=True)
 
 
 @dataclass
@@ -132,11 +136,32 @@ def _execute_command(info: PackageInfo) -> list[str]:
     lines.append(info.prefix(f"(shell-quote-argument {exe_path})", prefix=prefix))
     lines.append(info.prefix("command", prefix=prefix))
     lines.append(info.prefix(f"({_args_func(info)} args))))", prefix=prefix))
-    lines.append(info.indent("(let ((result (shell-command-to-string shell-cmd)))", level=2))
+    lines.append(info.indent("(let ((result (string-trim (shell-command-to-string shell-cmd))))", level=2))
     lines.append(info.indent("(if (string-empty-p result)", level=3))
-    lines.append(info.indent(f"(message \"Command: %S executed\" {exe_path})", level=5))
-    lines.append(info.indent(f"(message \"Command %S executed with Result %s\" {exe_path} result))", level=4))
+    lines.append(info.indent("(message \"Command: %S executed\" command)", level=5))
+    lines.append(info.indent("(message \"Command %S executed > %s\" command result))", level=4))
     lines.append(info.indent("result)))", level=3))
+    return lines
+
+
+def config_home_func(formatter: ICodeFormatter) -> str:
+    func_names = FunctionNames()
+    return func_names.config_home_func(formatter)
+
+
+def _config_home_function(info: PackageInfo) -> list[str]:
+    lines = info.formatter.empty_line(count=2)
+    lines.append(info.indent(f"(defun {config_home_func(info.formatter)} ()", level=0))
+    lines.append(info.indent("\"Return the path to the komorebi configuration folder or nil.\"", level=1))
+    lines.append(info.indent("(let ((config-path (getenv \"KOMOREBI_CONFIG_HOME\"))", level=1))
+    prefix = lines[-1].find("(config-path") - 1
+    lines.append(info.prefix("(user-profile (getenv \"USERPROFILE\")))", prefix=prefix))
+    lines.append(info.indent("(if (and config-path (file-directory-p config-path))", level=2))
+    lines.append(info.indent("(string-replace \"\\\\\" \"/\" config-path)", level=4))
+    lines.append(info.indent("(setq config-path (concat user-profile \".config\" \".komorebi\"))", level=3))
+    lines.append(info.indent("(if (file-directory-p config-path)", level=3))
+    lines.append(info.indent("(string-replace \"\\\\\" \"/\" config-path)", level=5))
+    lines.append(info.indent("nil))))", level=4))
     return lines
 
 
@@ -147,6 +172,7 @@ def pre_generator(info: PackageInfo) -> list[str]:
     lines.extend(_custom_executable(info))
     lines.extend(_get_args_function(info))
     lines.extend(_execute_command(info))
+    lines.extend(_config_home_function(info))
     lines.extend(info.formatter.empty_line(count=2))
     lines.append(";;")
     lines.append(";;; Generated CLI Commands")

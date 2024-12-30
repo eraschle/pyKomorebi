@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 from dataclasses import dataclass
 from typing import NotRequired, Protocol, TypedDict, TypeVar, Unpack
 
@@ -35,9 +35,11 @@ class ICodeFormatter(Protocol):
 
     def empty_line(self, count: int = 1) -> list[str]: ...
 
-    def indent_for(self, level: int, is_new_line: bool = False) -> str: ...
+    def prefix_of(self, line: str) -> int: ...
 
-    def indent(self, line: str, level: int = 0, is_new_line: bool = False) -> str: ...
+    def indent_for(self, level: int, prefix: int = -1) -> str: ...
+
+    def indent(self, line: str, level: int, prefix: int = -1) -> str: ...
 
     def concat_args(self, *args: str) -> str: ...
 
@@ -81,20 +83,19 @@ class ACodeFormatter(ABC, ICodeFormatter):
             return []
         return self._empty_line * count
 
-    def indent_for(self, level: int, is_new_line: bool = False) -> str:
+    def prefix_of(self, line: str) -> int:
+        return len(line) - len(line.lstrip())
+
+    def indent_for(self, level: int, prefix: int = -1) -> str:
         if level <= 0:
             return ""
         indent = self.indent_str * level
-        if not is_new_line:
+        if len(indent) > prefix:
             return indent
-        return self._new_line_indent(indent)
+        return self.column_prefix(prefix)
 
-    @abstractmethod
-    def _new_line_indent(self, indent: str) -> str:
-        pass
-
-    def indent(self, line: str, level: int = 0, is_new_line: bool = False) -> str:
-        indent = self.indent_for(level, is_new_line=is_new_line)
+    def indent(self, line: str, level: int = 0, prefix: int = -1) -> str:
+        indent = self.indent_for(level, prefix)
         return f"{indent}{line}"
 
     def default_value(self, value: str | None, format_str: str | None = None) -> str:
@@ -175,6 +176,8 @@ class ACodeFormatter(ABC, ICodeFormatter):
             current = self.fill_column(current, kw.get("columns", 0))
         for value in values[1:]:
             value = value.strip()
+            if len(value) == 0:
+                continue
             concat = utils.as_string(current, value, separator=kw["separator"])
             if self.is_not_max_length(concat):
                 current = concat
