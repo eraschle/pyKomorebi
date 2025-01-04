@@ -62,6 +62,19 @@ class ListHelper(Generic[TItem]):
             return current_prefix - 1
         return self.formatter.prefix_of(lines[-1])
 
+    def _open_bracket_count(self, lines: list[str]) -> int:
+        return sum([line.count("(") for line in lines])
+
+    def _close_bracket_count(self, lines: list[str]) -> int:
+        return sum([line.count(")") for line in lines])
+
+    def _has_closed_command(self, lines: list[str]) -> bool:
+        open_brackets = self._open_bracket_count(lines)
+        close_brackets = self._close_bracket_count(lines)
+        if close_brackets == 0:
+            return False
+        return (open_brackets - close_brackets) == 2
+
     def _get_opening_line(self, lines: list[str]) -> str | None:
         if len(lines) == 0:
             return None
@@ -81,6 +94,8 @@ class ListHelper(Generic[TItem]):
         if lines[-1].endswith(self.start_str):
             prefix = self._get_list_prefix(lines, current_prefix)
             return prefix
+        if self._has_closed_command(lines):
+            return self._get_list_prefix(lines, current_prefix)
         line = self._get_opening_line(lines)
         if line is None:
             return self._get_list_prefix(lines, current_prefix)
@@ -96,6 +111,7 @@ class ListHelper(Generic[TItem]):
 
     def create_list_str(self, *list_item: TItem, **kw: Unpack[FormatterArgs]) -> list[str]:
         items = list(self._values)
+        last_expr = (-1, -1)
         for item in list_item:
             values = []
             if kw.get("level") == self.args.get("level") and not self._exists(self.prev_code, items):
@@ -109,20 +125,32 @@ class ListHelper(Generic[TItem]):
                 continue
             index = self._last_valid_index(values, **kw)
             if index > 0:
-                if len(items) > 0 and not items[-1].endswith(self.start_str):
+                if self._has_closed_command(items):
+                    kw["prefix"] = last_expr[1]
+                elif len(items) > 0 and not items[-1].endswith(self.start_str):
                     kw["prefix"] = self._get_prefix(items, **kw)
                 elif len(items) > 0 and items[-1].endswith(self.start_str):
                     kw["prefix"] = kw.get("prefix", 0) - 1
+                last_row = len(items)
                 items.append(self._get_line(values[:index], **kw))
+                last_col = items[last_row].find(item[0]) - 2
+                last_expr = (last_row, last_col)
                 kw["prefix"] = self._get_prefix(items, **kw)
                 values = values[index:]
             if len(values) == 0:
+                kw["prefix"] = last_expr[1]
                 continue
             if self.formatter.is_valid_line(*values, **kw) or len(values) == 1:
+                last_row = len(items)
                 items.extend(self.formatter.concat_values(*values, **kw))
+                last_col = items[last_row].find(item[0]) - 2
+                last_expr = (last_row, last_col)
             elif len(values) > 1:
                 kw["prefix"] = self._get_prefix(items, **kw)
+                last_row = len(items)
                 items.extend(self.formatter.concat_values(values[0], **kw))
+                last_col = items[last_row].find(item[0]) - 2
+                last_expr = (last_row, last_col)
                 kw["prefix"] = self._get_prefix(items, **kw)
                 items.extend(self.formatter.concat_values(*values[1:], **kw))
         return items
@@ -164,6 +192,11 @@ class ListHelper(Generic[TItem]):
                     values.extend(self.formatter.concat_values(item[0], **kw))
                     kw["prefix"] = self._get_prefix(values, **kw)
                     values.extend(self.formatter.concat_values(*item[1:], **kw))
+            elif isinstance(item, str):
+                prefix = kw.get("prefix", 0)
+                level = kw.get("level", 0)
+                item_str = self.formatter.indent(item, level=level, prefix=prefix)
+                values.append(item_str)
         return values
 
     def _get_list_lines(self) -> list[str]:

@@ -76,7 +76,7 @@ class ACodeFormatter(ABC, ICodeFormatter):
     def is_not_max_length(self, line: str | None) -> bool:
         if line is None:
             return False
-        return len(line) < self.max_length
+        return len(line) <= self.max_length
 
     def empty_line(self, count: int = 1) -> list[str]:
         if count <= 0:
@@ -87,7 +87,7 @@ class ACodeFormatter(ABC, ICodeFormatter):
         return len(line) - len(line.lstrip())
 
     def indent_for(self, level: int, prefix: int = -1) -> str:
-        if level <= 0:
+        if level <= 0 and prefix <= 0:
             return ""
         indent = self.indent_str * level
         if len(indent) > prefix:
@@ -127,7 +127,7 @@ class ACodeFormatter(ABC, ICodeFormatter):
         level_col = self.indent_for(level=kw.get("level", 0))
         as_str = utils.as_string(*values, separator=kw["separator"])
         line_length = len(as_str) + max(len(level_col), kw.get("columns", 0))
-        return line_length < self.max_length
+        return line_length <= self.max_length
 
     def _get_words(self, value: str, split_char: str | None = None) -> list[str]:
         if split_char is None:

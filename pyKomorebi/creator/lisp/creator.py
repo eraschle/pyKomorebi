@@ -15,8 +15,6 @@ CLEANUP_PATTERN = [
     re.compile(r"(\(without.*?\))"),
 ]
 
-SINGLE_QUOTE = re.compile(r"'([^']*)'")
-
 
 class LispCreator(ACodeCreator):
     autoload_line = ";;;###autoload"
@@ -30,13 +28,6 @@ class LispCreator(ACodeCreator):
             max_length=max_length,
         )
         self.var_hanlder = LispPackageHandler(self.formatter, manager)
-
-    def _replace_single_quotes(self, lines: list[str]) -> list[str]:
-        changed = []
-        for line in lines:
-            line = SINGLE_QUOTE.sub(r"/='\1/='", line)
-            changed.append(line)
-        return changed
 
     def _ensure_autoload_line_indent(self, lines: list[str]) -> list[str]:
         for idx, line in enumerate(lines):
@@ -54,8 +45,8 @@ class LispCreator(ACodeCreator):
 
     def variable_doc_string(self, arg_name: str, **kw: Unpack[FormatterArgs]) -> list[str]:
         kw["is_code"] = False
-        arg_name = self.formatter.remove_module_prefix(arg_name)
-        doc_str = f"\"List of possible values for \\\\='{arg_name}\\\\='.\""
+        arg_name = self.formatter.remove_module(arg_name)
+        doc_str = f"\"List of possible values for `{arg_name}'.\""
         doc_str = utils.ensure_ends_with(doc_str, end_str=")")
         kw = code_utils.with_level(kw)
         return [self.formatter.indent(doc_str, level=kw.get("level", 1))]
@@ -89,8 +80,7 @@ class LispCreator(ACodeCreator):
             )
         )
         lines.append(creator.code(level=1, separator=" "))
-        self._ensure_autoload_line_indent(lines)
-        return lines
+        return self._ensure_autoload_line_indent(lines)
 
     def generate(self, commands: Iterable[ApiCommand]) -> list[str]:
         package_info = pkg.PackageInfo(

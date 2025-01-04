@@ -190,14 +190,14 @@ class CompletingHandler:
         return self.handler.exists(arg)
 
     def completing_variable(self, arg: CommandArgs) -> list[str]:
-        default = arg.default if arg.has_default() else "nil"
         name = self.creator.to_doc_name(arg, suffix=None)
         prompt = f'"Enter value for {name}: "'
-        return [
-            f"(completing-read {prompt}",
-            self.handler.get(arg, as_symbol=False),
-            f"nil t {default})",
-        ]
+        variable = self.handler.get(arg, as_symbol=False)
+        if arg.has_default():
+            variable = f'{variable} nil t "{arg.default}")'
+        else:
+            variable = f"{variable} nil t)"
+        return [f"(completing-read {prompt}", variable]
 
     def _is_optional(self, arg: CommandArgs) -> bool:
         if isinstance(arg, CommandOption) or not isinstance(arg, CommandArgument):
@@ -252,8 +252,9 @@ class CompletingHandler:
         if not arg.has_description():
             return []
         description = self._get_description(arg, suffix=":")
-        default_value = "-1" if self._is_optional(arg) else "nil"
-        return [f"(read-number {description} {default_value})"]
+        if self._is_optional(arg):
+            return [f"(read-number {description} -1)"]
+        return [f"(read-number {description})"]
 
     def _is_read_string(self, line: str) -> bool:
         return any(self._is_read(line, values) for values in self.read_name)
@@ -267,8 +268,9 @@ class CompletingHandler:
         if not arg.has_description():
             return []
         description = self._get_description(arg, suffix=":")
-        default_value = "-" if self._is_optional(arg) else "nil"
-        return [f"(read-string {description} nil nil {default_value})"]
+        if self._is_optional(arg):
+            return [f"(read-string {description} nil nil \"-\")"]
+        return [f"(read-string {description})"]
 
     def is_read_path(self, arg: CommandArgs) -> bool:
         for line in arg.description:
@@ -281,12 +283,12 @@ class CompletingHandler:
         if not self.is_read_path(arg):
             return []
         description = self._get_description(arg, suffix=":")
-        must_match = "nil" if self._is_optional(arg) else "t"
-        return [
-            f"(read-file-name {description} ",
-            f"({pkg.config_home_func(self.creator.formatter)})",
-            f"nil {must_match})",
-        ]
+        last_line = f"({pkg.config_home_func(self.creator.formatter)})"
+        if self._is_optional(arg):
+            last_line += ")"
+        else:
+            last_line += " nil t)"
+        return [f"(read-file-name {description}", last_line]
 
     def is_completing(self, arg: CommandArgs) -> bool:
         for is_read, _ in self._factory:
@@ -410,6 +412,9 @@ class ArgumentCreator(ALispArgCreator[CommandArgument]):
         return arg.has_default() or arg.has_possible_values() or self.completing.is_completing(arg)
 
 
+SINGLE_QUOTE = re.compile(r"\s+'([^']*)'")
+
+
 class LispCommandDocCreator(ADocCreator):
     def quote_doc_start(self, lines: list[str], level: int) -> list[str]:
         if not lines[0].lstrip().startswith("\""):
@@ -435,11 +440,18 @@ class LispCommandDocCreator(ADocCreator):
         doc_lines.extend(self.formatter.concat_values(*other_sentences, **kw))
         return doc_lines
 
+    def _replace_single_quotes(self, lines: list[str]) -> list[str]:
+        for idx, line in enumerate(lines):
+            lines[idx] = SINGLE_QUOTE.sub(r" `\1'", line)
+        return lines
+
     def args_doc(self, docs: list[ArgDoc], **kw: Unpack[FormatterArgs]) -> list[str]:
         kw["columns"] = self._get_max_length(docs, suffix=kw.get("suffix", ":"))
         doc_lines = []
         for arg in docs:
-            doc_lines.extend(self._command_arg_doc(arg, **kw))
+            lines = self._command_arg_doc(arg, **kw)
+            lines = self._replace_single_quotes(lines)
+            doc_lines.extend(lines)
         return doc_lines
 
 
