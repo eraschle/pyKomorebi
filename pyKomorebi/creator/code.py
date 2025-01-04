@@ -198,7 +198,7 @@ class ArgDoc:
     name: str
     default: str
     description: list[str]
-    possible_values: list[CommandConstant]
+    constants: list[CommandConstant]
 
     def has_default(self) -> bool:
         return len(self.default) > 0
@@ -206,11 +206,11 @@ class ArgDoc:
     def has_description(self) -> bool:
         return len(self.description) > 0
 
-    def has_possible_values(self) -> bool:
-        return len(self.possible_values) > 0
+    def has_constants(self) -> bool:
+        return len(self.constants) > 0
 
-    def has_possible_values_descriptions(self) -> bool:
-        return any(value.has_description() for value in self.possible_values)
+    def has_constants_descriptions(self) -> bool:
+        return any(value.has_description() for value in self.constants)
 
     def get_name(self, constant: CommandConstant) -> str:
         return f"- {constant.name.upper()}:"

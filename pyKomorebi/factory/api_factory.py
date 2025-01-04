@@ -12,10 +12,14 @@ ARGS_PATTERN = re.compile(r"\s*(?P<name><[a-zA-Z-_]+>)(?P<rest>.*)?")
 ARGS_OPT_PATTERN = re.compile(r"\s*(?P<name>\[[A-Z-_]+\])(?P<optional>[\.]*)?(?P<rest>.*)?")
 
 OPTION_LINE = "Options:"
-OPTION_PATTERN = re.compile(r"\s*(?P<short>-\w+)?(?:[,\s]*(?P<name>--[\w-]+))?\s*(?P<arg><.*>)?(?P<description>.*)")
+OPTION_PATTERN = re.compile(
+    r"\s*(?P<short>-\w+)?(?:[,\s]*(?P<name>--[\w-]+))?\s*(?P<arg><.*>)?(?P<description>.*)"
+)
 
 DEFAULT_PATTERN = re.compile(r".*(?P<complete>\[default:\s*(?P<default>\w*)\])", re.DOTALL)
-POSSIBLE_PATTERN = re.compile(r".*(?P<complete>\[possible\s*values:\s*(?P<values>.*)\].*)", re.DOTALL)
+CONSTANTS_PATTERN = re.compile(
+    r".*(?P<complete>\[possible\s*values:\s*(?P<values>.*)\].*)", re.DOTALL
+)
 
 CLEANUP_PATTERN = [
     re.compile(r"(\s*\(without.*?\))", re.DOTALL),
@@ -126,8 +130,8 @@ def constant_from_lines(lines: list[str]) -> list[CommandConstant]:
     return constants
 
 
-def _get_possible_values_regex(doc_string: str) -> tuple[str, list[CommandConstant]]:
-    matched = POSSIBLE_PATTERN.match(doc_string)
+def _get_constants_regex(doc_string: str) -> tuple[str, list[CommandConstant]]:
+    matched = CONSTANTS_PATTERN.match(doc_string)
     if matched is None:
         return doc_string, []
     complete = matched.group("complete")
@@ -137,7 +141,7 @@ def _get_possible_values_regex(doc_string: str) -> tuple[str, list[CommandConsta
     return doc_string, constant_from_lines(matched_values)
 
 
-def _get_possible_values_startswith(doc_string: str) -> tuple[str, list[CommandConstant]]:
+def _get_constants_startswith(doc_string: str) -> tuple[str, list[CommandConstant]]:
     doc_lines = utils.strip_and_clean_blank(*doc_string.splitlines(keepends=False), strip_chars=" ")
     idx, line = find_line(doc_lines, search="possible values:", lower_case=True)
     if idx < 0 or line is None:
@@ -152,10 +156,10 @@ def _get_possible_values_startswith(doc_string: str) -> tuple[str, list[CommandC
     return doc_string, constant_from_lines(values)
 
 
-def _get_possible_values(doc_string: str) -> tuple[str, list[CommandConstant]]:
-    doc_string, values = _get_possible_values_regex(doc_string)
+def _get_constants(doc_string: str) -> tuple[str, list[CommandConstant]]:
+    doc_string, values = _get_constants_regex(doc_string)
     if len(values) == 0:
-        doc_string, values = _get_possible_values_startswith(doc_string)
+        doc_string, values = _get_constants_startswith(doc_string)
     return doc_string, values
 
 
@@ -164,9 +168,11 @@ def _docs_default_and_constants(
 ) -> tuple[list[str], str | None, list[CommandConstant]]:
     doc_string = "\n".join(utils.clean_blank(*doc_lines, strip_chars=None))
     doc_string, default = _get_default_value(doc_string)
-    doc_string, possible_values = _get_possible_values(doc_string)
-    lines = utils.strip_and_clean_blank(*doc_string.splitlines(keepends=False), strip_chars=strip_char)
-    return lines, default, possible_values
+    doc_string, constants = _get_constants(doc_string)
+    lines = utils.strip_and_clean_blank(
+        *doc_string.splitlines(keepends=False), strip_chars=strip_char
+    )
+    return lines, default, constants
 
 
 def _get_option_short_and_name(line: str) -> tuple[str | None, str | None, str | None, str]:
@@ -193,7 +199,7 @@ def _create_options(doc_lines: list[str], strip_char: str) -> list[CommandOption
                 value=utils.strip_value(arg_value, strip_chars=strip_char),
                 description=utils.strip_and_clean_blank(*doc_lines, strip_chars=strip_char),
                 default=utils.strip_value(default, strip_chars=strip_char),
-                possible_values=constants,
+                constants=constants,
             )
         )
     return options
@@ -228,7 +234,7 @@ def _create_arguments(doc_lines: list[str], strip_char: str) -> list[CommandArgu
                 argument=utils.strip_value(name, strip_chars=strip_char),
                 description=utils.strip_and_clean_blank(*doc_lines, strip_chars=strip_char),
                 default=utils.strip_value(default, strip_chars=strip_char),
-                possible_values=constants,
+                constants=constants,
                 optional=optional,
             )
         )

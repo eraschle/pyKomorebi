@@ -43,15 +43,17 @@ def test_options_with_argument():
 def test_default_value():
     matched = api_factory.DEFAULT_PATTERN.match("          [default: single]")
     assert matched is not None
-    short_option = matched.group("default")
-    assert short_option == "single"
+    value = matched.group("default")
+    assert value == "single"
 
 
-def test_possible_values():
-    matched = api_factory.POSSIBLE_PATTERN.match("   [possible values: single, stack, monocle, unfocused, floating]")
+def test_constants():
+    matched = api_factory.CONSTANTS_PATTERN.match(
+        "   [possible values: single, stack, monocle, unfocused, floating]"
+    )
     assert matched is not None
-    short_option = matched.group("values")
-    assert short_option == "single, stack, monocle, unfocused, floating"
+    constants = matched.group("values")
+    assert constants == "single, stack, monocle, unfocused, floating"
 
 
 MULTILINE_DOCSTRING = """          Desired ease function for animation
@@ -64,16 +66,16 @@ MULTILINE_DOCSTRING = """          Desired ease function for animation
 def test_multiline_default_value():
     matched = api_factory.DEFAULT_PATTERN.match(MULTILINE_DOCSTRING)
     assert matched is not None
-    short_option = matched.group("default")
-    assert short_option == "linear"
+    value = matched.group("default")
+    assert value == "linear"
 
 
-def test_multiline_possible_values():
-    matched = api_factory.POSSIBLE_PATTERN.match(MULTILINE_DOCSTRING)
+def test_multiline_constants():
+    matched = api_factory.CONSTANTS_PATTERN.match(MULTILINE_DOCSTRING)
     assert matched is not None
-    short_option = matched.group("values")
+    constants = matched.group("values")
     assert (
-        short_option
+        constants
         == """linear, ease-in-sine, ease-out-sine, ease-in-out-sine, ease-in-quad, ease-out-quad, ease-in-out-quad, ease-in-cubic, ease-in-out-cubic, ease-in-quart, ease-out-quart, ease-in-out-quart, ease-in-quint, ease-out-quint, ease-in-out-quint, ease-in-expo, ease-out-expo,
  ease-in-out-expo, ease-in-circ, ease-out-circ, ease-in-out-circ, ease-in-back, ease-out-back, ease-in-out-back, ease-in-elastic, ease-out-elastic, ease-in-out-elastic, ease-in-bounce, ease-out-bounce, ease-in-out-bounce"""
     )

@@ -144,7 +144,7 @@ class AHKOptionCreator(AAutohotKeyCreator[CommandOption]):
             name=arg.name,
             default=self.default_value(arg, format_str=kw.get("default_format", None)),
             description=self.valid_description(arg),
-            possible_values=arg.possible_values,
+            constants=arg.constants,
         )
 
     def _if_expression(self, opt: CommandOption, level: int) -> str:
@@ -208,7 +208,7 @@ class AHKArgumentCreator(AAutohotKeyCreator[CommandArgument]):
             name=arg.name,
             default=self.default_value(arg, format_str=kw.get("default_format", None)),
             description=self.valid_description(arg),
-            possible_values=arg.possible_values,
+            constants=arg.constants,
         )
 
     def _if_expression(self, arg: CommandArgument, level: int) -> str:

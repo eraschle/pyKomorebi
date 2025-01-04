@@ -57,15 +57,15 @@ class CommandConstant(CommandBase):
 class CommandArgs(CommandBase):
     description: list[str]
     default: str | None
-    possible_values: list[CommandConstant]
+    constants: list[CommandConstant]
 
     def __post_init__(self):
         super().__post_init__()
         self.default = _value(self.default)
-        self.possible_values = [value for value in self.possible_values if value.name is not None]
+        self.constants = [value for value in self.constants if value.name is not None]
 
-    def has_possible_values(self) -> bool:
-        return len(self.possible_values) > 0
+    def has_constants(self) -> bool:
+        return len(self.constants) > 0
 
     def has_default(self) -> bool:
         return self.default is not None
@@ -141,9 +141,9 @@ class ApiCommand:
         self.description = utils.strip_and_clean_blank(*self.description)
         self.usage = _value(self.usage)
 
-    def has_possible_values(self) -> bool:
+    def has_constants(self) -> bool:
         args = self.arguments + self.options
-        return any(arg.has_possible_values() for arg in args)
+        return any(arg.has_constants() for arg in args)
 
     def remove_help_option(self):
         options = [opt for opt in self.options if not opt.is_help()]

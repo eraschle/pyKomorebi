@@ -29,7 +29,9 @@ class ADocCreator(ABC, IDocCreator):
             valid_sentences.extend(valid_lines)
         return valid_sentences
 
-    def _add_possible_value_title(self, arg: ArgDoc, lines: list[str], **kw: Unpack[FormatterArgs]) -> list[str]:
+    def _add_constants_title(
+        self, arg: ArgDoc, lines: list[str], **kw: Unpack[FormatterArgs]
+    ) -> list[str]:
         default = arg.default if arg.has_default() else ""
         if arg.has_description():
             prefix = self.formatter.column_prefix(kw.get("columns", 0))
@@ -44,17 +46,19 @@ class ADocCreator(ABC, IDocCreator):
     def _can_append_to_title(self, doc_lines: list[str], doc: ArgDoc, **kw: Unpack[FormatterArgs]) -> bool:
         if doc.has_default() or len(doc_lines) > 1:
             return False
-        values_str = kw["separator"].join([cst.name for cst in doc.possible_values])
+        values_str = kw["separator"].join([cst.name for cst in doc.constants])
         return self.formatter.is_valid_line(doc_lines[-1], values_str, **kw)
 
-    def _get_possible_values(self, arg_doc: ArgDoc, doc_lines: list[str], **kw: Unpack[FormatterArgs]) -> list[str]:
+    def _get_constants(
+        self, arg_doc: ArgDoc, doc_lines: list[str], **kw: Unpack[FormatterArgs]
+    ) -> list[str]:
         kw = kw.copy()
-        doc_lines = self._add_possible_value_title(arg_doc, doc_lines, **kw)
+        doc_lines = self._add_constants_title(arg_doc, doc_lines, **kw)
         kw["prefix"] = kw.get("columns", 0) + 1  # +1 for the space
-        if arg_doc.has_possible_values_descriptions():
-            enum_column = max([len(arg_doc.get_name(const)) for const in arg_doc.possible_values])
+        if arg_doc.has_constants_descriptions():
+            enum_column = max([len(arg_doc.get_name(const)) for const in arg_doc.constants])
             kw["columns"] = enum_column + kw.get("columns", 0) + 1  # +1 for the space
-            for constant in arg_doc.possible_values:
+            for constant in arg_doc.constants:
                 name = arg_doc.get_name(constant)
                 if constant.has_description():
                     values = self.formatter.concat_values(name, *constant.description, **kw)
@@ -63,7 +67,7 @@ class ADocCreator(ABC, IDocCreator):
                 doc_lines.extend(values)
         else:
             kw["separator"] = ", "
-            values = [value.name for value in arg_doc.possible_values]
+            values = [value.name for value in arg_doc.constants]
             if self._can_append_to_title(doc_lines, arg_doc, **kw):
                 values_str = kw["separator"].join(values)
                 doc_lines[-1] = utils.as_string(doc_lines[-1], values_str, separator=" ")
@@ -79,8 +83,8 @@ class ADocCreator(ABC, IDocCreator):
             doc_lines[0] = utils.ensure_ends_with(doc_lines[0], end_str=".")
         elif arg_doc.has_description() and len(doc_lines) > 1:
             doc_lines[-1] = utils.ensure_ends_with(doc_lines[-1], end_str=".")
-        if arg_doc.has_possible_values():
-            doc_lines = self._get_possible_values(arg_doc, doc_lines, **kw)
+        if arg_doc.has_constants():
+            doc_lines = self._get_constants(arg_doc, doc_lines, **kw)
         elif arg_doc.has_default():
             column_prefix = self.formatter.column_prefix(kw.get("columns", 0))
             default_lines = self.formatter.concat_values(column_prefix, arg_doc.default, **kw)

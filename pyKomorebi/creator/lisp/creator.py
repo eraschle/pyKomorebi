@@ -45,7 +45,7 @@ class LispCreator(ACodeCreator):
 
     def variable_doc_string(self, arg_name: str, **kw: Unpack[FormatterArgs]) -> list[str]:
         kw["is_code"] = False
-        arg_name = self.formatter.remove_module(arg_name)
+        arg_name = self.formatter.remove_module_prefix(arg_name)
         doc_str = f"\"List of possible values for `{arg_name}'.\""
         doc_str = utils.ensure_ends_with(doc_str, end_str=")")
         kw = code_utils.with_level(kw)

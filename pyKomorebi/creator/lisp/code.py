@@ -88,10 +88,10 @@ class LispPackageHandler:
         self._variables = {}
 
     def _get_names(self, arg: CommandArgs) -> tuple[str, ...]:
-        return tuple([value.name for value in arg.possible_values])
+        return tuple([value.name for value in arg.constants])
 
     def add(self, arg: CommandArgs):
-        if not arg.has_possible_values():
+        if not arg.has_constants():
             return
         value_tuple = self._get_names(arg)
         if value_tuple in self._variables:
@@ -107,7 +107,7 @@ class LispPackageHandler:
             yield name, value
 
     def exists(self, arg: CommandArgs) -> bool:
-        if not arg.has_possible_values():
+        if not arg.has_constants():
             return False
         return self._get_names(arg) in self._variables
 
@@ -371,12 +371,12 @@ class OptionCreator(ALispArgCreator[CommandOption]):
         return ArgDoc(
             name=self.to_doc_name(arg, kw.get("suffix", None)),
             default=self.default_value(arg, kw.get("default_format", None)),
-            possible_values=arg.possible_values,
+            constants=arg.constants,
             description=self.valid_description(arg, strip_char=None),
         )
 
     def can_arg_be_interactive(self, arg: CommandOption) -> bool:
-        if arg.has_possible_values() or arg.has_default():
+        if arg.has_constants() or arg.has_default():
             return True
         return self.completing.is_completing(arg)
 
@@ -404,12 +404,12 @@ class ArgumentCreator(ALispArgCreator[CommandArgument]):
         return ArgDoc(
             name=self.to_doc_name(arg, kw.get("suffix", None)),
             default=self.default_value(arg, kw.get("default_format", None)),
-            possible_values=arg.possible_values,
+            constants=arg.constants,
             description=self.valid_description(arg, strip_char=None),
         )
 
     def can_arg_be_interactive(self, arg: CommandArgument) -> bool:
-        return arg.has_default() or arg.has_possible_values() or self.completing.is_completing(arg)
+        return arg.has_default() or arg.has_constants() or self.completing.is_completing(arg)
 
 
 SINGLE_QUOTE = re.compile(r"\s+'([^']*)'")
@@ -542,7 +542,7 @@ class LispCommandCreator(ICommandCreator):
         kw["is_code"] = True
         lines = []
         lines.extend(self._function_body_interactive(**kw))
-        lines.extend(self._function_body_check_possible_values(**kw))
+        lines.extend(self._function_body_check_constants(**kw))
         lines.extend(self._function_body_convert_args(**kw))
         args = self.command_args()
         lines.extend(self._function_body_call_komorebi(self.command.name, args, **kw))
@@ -574,7 +574,9 @@ class LispCommandCreator(ICommandCreator):
         code_line = f"(unless (member {arg_name} {var_name})"
         return self.formatter.indent(code_line, level=level)
 
-    def _check_possible_values_code(self, argument: CommandArgument, **kw: Unpack[FormatterArgs]) -> list[str]:
+    def _check_constant_code(
+        self, argument: CommandArgument, **kw: Unpack[FormatterArgs]
+    ) -> list[str]:
         arg_name = self.arg.to_arg(argument)
         level = kw.get("level", 1)
         code_line = self._get_check_value_code_line(argument, level=level)
@@ -583,12 +585,12 @@ class LispCommandCreator(ICommandCreator):
         lines.append(self.formatter.indent(message, level=level + 1))
         return lines
 
-    def _function_body_check_possible_values(self, **kw: Unpack[FormatterArgs]) -> list[str]:
+    def _function_body_check_constants(self, **kw: Unpack[FormatterArgs]) -> list[str]:
         lines = []
         for argument in self.command.arguments:
-            if not argument.has_possible_values():
+            if not argument.has_constants():
                 continue
-            lines.extend(self._check_possible_values_code(argument, **kw))
+            lines.extend(self._check_constant_code(argument, **kw))
         return lines
 
     def _expression(self, expression: str, **kw: Unpack[FormatterArgs]) -> str:
