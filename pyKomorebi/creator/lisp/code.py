@@ -645,7 +645,32 @@ class LispCommandCreator(ICommandCreator):
             lines.extend(self._set_option_line(option, **kw))
         return lines
 
-    def _function_body_call_komorebi(self, cmd_name: str, args: list[str], **kw: Unpack[FormatterArgs]) -> list[str]:
+    def _function_call_final_try(self, command: str, **kw: Unpack[FormatterArgs]) -> list[str]:
+        kw["prefix"] = len(self.formatter.indent_for(level=kw.get("level", 1)))
+        cmd_values = utils.strip_and_clean_blank(*command.split(" "), strip_chars=" ")
+        cmd_lines = self.formatter.concat_values(*cmd_values, **kw)
+        kw["prefix"] = cmd_lines[0].find(cmd_values[1]) - 1
+        cmd_lines.extend(self.formatter.concat_values(*cmd_lines.pop(-1).split(" "), **kw))
+        return cmd_lines
+
+    def _function_call_many_lines(self, command: str, **kw: Unpack[FormatterArgs]) -> list[str]:
+        kw["prefix"] = len(self.formatter.indent_for(level=kw.get("level", 1)))
+        function, *args = utils.strip_and_clean_blank(*command.split(" "), strip_chars=" ")
+        cmd_lines = self.formatter.concat_values(function, **kw)
+        kw["prefix"] += 1
+        cmd_lines.extend(self.formatter.concat_values(*args, **kw))
+        return cmd_lines
+
+    def _function_body_call_komorebi(
+        self, cmd_name: str, args: list[str], **kw: Unpack[FormatterArgs]
+    ) -> list[str]:
         args_str = f"{self.formatter.concat_args(*args)}" if len(args) > 0 else ""
-        cmd = f"({pkg.execute_func_name(self.formatter)} \"{cmd_name}\" {args_str}"
-        return [self.formatter.indent(cmd, kw.get("level", 1)).rstrip() + "))"]
+        command_str = f"({pkg.execute_func_name(self.formatter)} \"{cmd_name}\" {args_str}"
+        command_str = self.formatter.indent(command_str, kw.get("level", 1)).rstrip() + "))"
+        if self.formatter.is_valid_line(command_str, **kw):
+            return [command_str]
+        cmd_lines = self._function_call_many_lines(command_str, **kw)
+        if len(cmd_lines) == 2:
+            return cmd_lines
+        print(f"commmand {cmd_name} with {args} needs final try!!!!")
+        return self._function_call_final_try(command_str, **kw)
