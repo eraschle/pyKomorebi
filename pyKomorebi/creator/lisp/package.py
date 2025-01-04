@@ -116,8 +116,15 @@ def _get_args_function(info: PackageInfo) -> list[str]:
     lines.append(info.indent(f"(defun {_args_func(info)} (args)", level=0))
     lines.append(info.indent("\"Return string of ARGS.\"", level=1))
     lines.append(info.indent("(string-join", level=1))
-    lines.append(info.indent("(seq-filter (lambda (arg) (not (or (null arg) (string-empty-p arg)))) args)", level=2))
-    lines.append(info.indent('" "))', level=2))
+    pre_join = len(info.formatter.indent_for(level=1))
+    lines.append(info.prefix("(seq-filter", prefix=pre_join))
+    pre_pred = pre_join + 1
+    lines.append(info.prefix("(lambda (arg)", prefix=pre_pred))
+    pre_filter = lines[-1].find("(lambda (arg)") - 1
+    pre_lambda = pre_filter + 2
+    lines.append(info.prefix("(not (or (null arg) (string-empty-p arg))))", prefix=pre_lambda))
+    lines.append(info.prefix("args)", prefix=pre_filter))
+    lines.append(info.prefix('" "))', prefix=pre_join))
     return lines
 
 
@@ -135,16 +142,19 @@ def _execute_command(info: PackageInfo) -> list[str]:
     lines = info.formatter.empty_line(count=2)
     lines.append(info.indent(f"(defun {execute_func(info)} (command &rest args)", level=0))
     lines.append(info.indent("\"Execute komorebi COMMAND with ARGS in shell.\"", level=1))
-    lines.append(info.indent("(let ((shell-cmd (format \"%s %s %s\"", level=1))
-    prefix = lines[-1].find("\"%s %s %s\"") - 1
-    lines.append(info.prefix(f"(shell-quote-argument {exe_path})", prefix=prefix))
-    lines.append(info.prefix("command", prefix=prefix))
-    lines.append(info.prefix(f"({_args_func(info)} args))))", prefix=prefix))
-    lines.append(info.indent("(let ((result (string-trim (shell-command-to-string shell-cmd))))", level=2))
-    lines.append(info.indent("(if (string-empty-p result)", level=3))
-    lines.append(info.indent("(message \"Command: %S executed\" command)", level=5))
-    lines.append(info.indent("(message \"Command %S executed > %s\" command result))", level=4))
-    lines.append(info.indent("result)))", level=3))
+    lines.append(info.indent("(let* ((shell-cmd (format \"%s %s %s\"", level=1))
+    pre_result = lines[-1].find("(shell-cmd") - 1
+    pre_format = lines[-1].find("\"%s %s %s\"") - 1
+    lines.append(info.prefix(f"(shell-quote-argument {exe_path})", prefix=pre_format))
+    lines.append(info.prefix("command", prefix=pre_format))
+    lines.append(info.prefix(f"({_args_func(info)} args)))", prefix=pre_format))
+    lines.append(info.prefix("(result (string-trim", prefix=pre_result))
+    pre_trim = lines[-1].find("(string-trim")
+    lines.append(info.prefix("(shell-command-to-string shell-cmd))))", prefix=pre_trim))
+    lines.append(info.indent("(if (string-empty-p result)", level=2))
+    lines.append(info.indent("(message \"Command: %S executed\" command)", level=4))
+    lines.append(info.indent("(message \"Command %S executed > %s\" command result))", level=3))
+    lines.append(info.indent("result))", level=2))
     return lines
 
 
