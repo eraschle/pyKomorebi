@@ -23,8 +23,14 @@ class AHKCodeFormatter(ACodeFormatter):
     def __init__(self, module_name: str, max_length: int) -> None:
         super().__init__(indent="  ", max_length=max_length, module_name=module_name)
 
-    def _new_line_indent(self, indent: str) -> str:
-        return indent
+    def comment(self, *comments: str, chars: str | None = None) -> list[str]:
+        chars = chars or ";"
+        if len(comments) == 0:
+            return [chars]
+        return [f"{chars} {comment}".rstrip() for comment in comments]
+
+    def region_comment(self, region: str) -> list[str]:
+        return [";;"] + self.comment(region, chars=";;;")
 
     def _clean_name(self, name: str) -> list[str]:
         name = self.pattern.sub(self.separator, name)
@@ -164,7 +170,9 @@ class AHKOptionCreator(AAutohotKeyCreator[CommandOption]):
             self.formatter.indent(f'{arg_name} := ""', level=level),
         ]
 
-    def _if_code_line(self, opt: CommandOption, manager: TranslationManager, level: int) -> list[str]:
+    def _if_code_line(
+        self, opt: CommandOption, manager: TranslationManager, level: int
+    ) -> list[str]:
         opt_name = opt.long if opt.long is not None else opt.short
         if opt_name is None:
             raise ValueError("Option must have a name or a short name")
@@ -179,7 +187,9 @@ class AHKOptionCreator(AAutohotKeyCreator[CommandOption]):
             self.formatter.indent(assign, level=level),
         ]
 
-    def if_has_value(self, elem: CommandOption, manager: TranslationManager, level: int) -> list[str]:
+    def if_has_value(
+        self, elem: CommandOption, manager: TranslationManager, level: int
+    ) -> list[str]:
         lines = []
         lines.append(self._if_expression(elem, level=level))
         lines.extend(self._if_code_line(elem, manager, level=level + 1))
@@ -227,7 +237,9 @@ class AHKArgumentCreator(AAutohotKeyCreator[CommandArgument]):
             self.formatter.indent(f'{arg_name} := ""', level=level),
         ]
 
-    def _if_code_line(self, arg: CommandArgument, manager: TranslationManager, level: int) -> list[str]:
+    def _if_code_line(
+        self, arg: CommandArgument, manager: TranslationManager, level: int
+    ) -> list[str]:
         opt_name = arg.argument if arg.argument is not None else arg.short
         if opt_name is None:
             raise ValueError("Option must have a name or a short name")
@@ -242,7 +254,9 @@ class AHKArgumentCreator(AAutohotKeyCreator[CommandArgument]):
             self.formatter.indent(assign, level=level),
         ]
 
-    def if_has_value(self, elem: CommandArgument, manager: TranslationManager, level: int) -> list[str]:
+    def if_has_value(
+        self, elem: CommandArgument, manager: TranslationManager, level: int
+    ) -> list[str]:
         lines = []
         lines.append(self._if_expression(elem, level=level))
         lines.extend(self._if_code_line(elem, manager, level=level + 1))
@@ -293,7 +307,9 @@ class AHKCommandDocCreator(ADocCreator):
 
 
 class AHKCommandCreator(ICommandCreator):
-    def __init__(self, command: ApiCommand, formatter: AHKCodeFormatter, manager: TranslationManager) -> None:
+    def __init__(
+        self, command: ApiCommand, formatter: AHKCodeFormatter, manager: TranslationManager
+    ) -> None:
         self.command = command
         self.formatter = formatter
         self.manager = manager
@@ -338,7 +354,9 @@ class AHKCommandCreator(ICommandCreator):
     def _arg_docs(self, **kw: Unpack[FormatterArgs]) -> list[ArgDoc]:
         return self.arg.docstring(**kw) + self.opt.docstring(**kw)
 
-    def docstring(self, level: int, separator: str = " ", columns: int = 0, suffix_args: str = ":") -> str:
+    def docstring(
+        self, level: int, separator: str = " ", columns: int = 0, suffix_args: str = ":"
+    ) -> str:
         kw = {"separator": separator, "columns": columns, "level": level, "suffix": ""}
         doc_lines = self.doc.function_doc(lines=self._function_docs(), **kw)
         doc_lines.extend(self.doc.usage_doc(line=self._usage_docs(), **kw))

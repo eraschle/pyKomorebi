@@ -35,6 +35,18 @@ class LispCodeFormatter(ACodeFormatter):
         name = self.pattern.sub(self.separator, name)
         return name.removeprefix(self.separator).removesuffix(self.separator)
 
+    def comment(self, *comments: str, chars: str | None = None) -> list[str]:
+        chars = chars or ";;"
+        if len(comments) == 0:
+            return [chars]
+        lines = []
+        for comment in comments:
+            lines.append(f"{chars} {comment}".rstrip())
+        return lines
+
+    def region_comment(self, region: str) -> list[str]:
+        return [";;", *self.comment(region, chars=";;;")]
+
     def name_to_code(self, name: str) -> str:
         if not (name.startswith("(") and name.endswith(")")):
             name = self._clean_name(name)
@@ -203,6 +215,15 @@ class CompletingHandler:
         if isinstance(arg, CommandOption) or not isinstance(arg, CommandArgument):
             return True
         return arg.optional
+
+    def replace_argument_name(self, arg_name: str, description) -> str:
+        # # Construct a regex pattern to match the argument name in any case
+        # pattern = re.compile(re.escape(arg_name), re.IGNORECASE)
+        # matched_text = match.group(0)
+
+        # result = pattern.sub(arg_name, description)
+        # return result
+        return ""
 
     def _get_description(self, arg: CommandArgs, suffix: str) -> str:
         if utils.has_sentence(*arg.description):

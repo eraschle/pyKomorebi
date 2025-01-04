@@ -52,6 +52,15 @@ class PackageInfo:
     def year(self) -> str:
         return datetime.now().strftime("%Y")
 
+    def comment(self, *values: str, chars: str = ";;") -> list[str]:
+        return self.formatter.comment(*values, chars=chars)
+
+    def region(self, name: str) -> list[str]:
+        return self.formatter.region_comment(name)
+
+    def empty_line(self, count: int = 1) -> list[str]:
+        return self.formatter.empty_line(count=count)
+
     def indent(self, line: str, level: int = 0) -> str:
         return self.formatter.indent(line, level)
 
@@ -61,33 +70,37 @@ class PackageInfo:
 
 
 def _package_descriptions(info: PackageInfo) -> list[str]:
-    lines = info.formatter.empty_line(count=0)
-    lines.append(info.indent(f";;; {info.name}.el --- Description -*- lexical-binding: t; -*-"))
-    lines.append(info.indent(";;"))
-    lines.append(info.indent(f";; Copyright (C) {info.year} {info.user_name}"))
-    lines.append(info.indent(";;"))
-    lines.append(info.indent(f";; Author: {info.user_and_email}"))
-    lines.append(info.indent(f";; Maintainer: {info.user_and_email}"))
-    lines.append(info.indent(";; Created: Oktober 07, 2024"))
-    lines.append(info.indent(f";; Modified: {info.modified}"))
-    lines.append(info.indent(f";; Version: {info.version}"))
-    lines.append(info.indent(";; Keywords: docs emulations extensions help languages lisp local processes"))
-    lines.append(info.indent(f";; Homepage: {info.repository}"))
-    lines.append(info.indent(f';; Package-Requires: ((emacs "{info.emacs_version}"))'))
-    lines.append(info.indent(";;"))
-    lines.append(info.indent(";; This file is not part of GNU Emacs."))
-    lines.append(info.indent(";;"))
-    lines.append(info.indent(";;; Commentary:"))
-    lines.append(info.indent(";;"))
-    lines.append(info.indent(";;  Description"))
-    lines.append(info.indent(";;"))
-    lines.append(info.indent(";;; Code:"))
-    lines.extend(info.formatter.empty_line())
+    lines = info.empty_line(count=0)
+    lines.extend(
+        info.comment(f"{info.name}.el --- Description -*- lexical-binding: t; -*-", chars=";;;")
+    )
+    lines.extend(info.comment())
+    lines.extend(info.comment(f"Copyright (C) {info.year} {info.user_name}"))
+    lines.extend(info.comment())
+    lines.extend(info.comment(f"Author: {info.user_and_email}"))
+    lines.extend(info.comment(f"Maintainer: {info.user_and_email}"))
+    lines.extend(info.comment("Created: Oktober 07, 2024"))
+    lines.extend(info.comment(f"Modified: {info.modified}"))
+    lines.extend(info.comment(f"Version: {info.version}"))
+    lines.extend(
+        info.comment("Keywords: docs emulations extensions help languages lisp local processes")
+    )
+    lines.extend(info.comment(f"Homepage: {info.repository}"))
+    lines.extend(info.comment(f'Package-Requires: ((emacs "{info.emacs_version}"))'))
+    lines.extend(info.comment())
+    lines.extend(info.comment("This file is not part of GNU Emacs."))
+    lines.extend(info.comment())
+    lines.extend(info.comment("Commentary:", chars=";;;"))
+    lines.extend(info.comment())
+    lines.extend(info.comment("Description", chars=";;;"))
+    lines.extend(info.comment())
+    lines.extend(info.comment("Code:", chars=";;;"))
+    lines.extend(info.formatter.empty_line(count=2))
     return lines
 
 
 def require_packages(info: PackageInfo) -> list[str]:
-    lines = info.formatter.empty_line(count=1)
+    lines = info.empty_line(count=1)
     lines.append(info.indent("(require 'cl-lib)"))
     return lines
 
@@ -98,7 +111,7 @@ def _executable_var(info: PackageInfo) -> str:
 
 
 def _custom_executable(info: PackageInfo) -> list[str]:
-    lines = info.formatter.empty_line(count=2)
+    lines = info.empty_line(count=2)
     lines.append(info.indent(f"(defcustom {_executable_var(info)} \"\"", level=0))
     lines.append(info.indent("\"The path to the komorebi executable.\"", level=1))
     lines.append(info.indent(":type 'string", level=1))
@@ -112,7 +125,7 @@ def _args_func(info: PackageInfo) -> str:
 
 
 def _get_args_function(info: PackageInfo) -> list[str]:
-    lines = info.formatter.empty_line(count=2)
+    lines = info.empty_line(count=2)
     lines.append(info.indent(f"(defun {_args_func(info)} (args)", level=0))
     lines.append(info.indent("\"Return string of ARGS.\"", level=1))
     lines.append(info.indent("(string-join", level=1))
@@ -137,11 +150,45 @@ def execute_func(info: PackageInfo) -> str:
     return execute_func_name(info.formatter)
 
 
+def _executable_is_set_check(info: PackageInfo, level: int) -> list[str]:
+    lines = info.empty_line(count=0)
+    exe_path = _executable_var(info)
+    lines.append(info.indent(f"(unless (and {exe_path}", level=level))
+    pre_empty = lines[-1].find(f"{exe_path}") - 1
+    lines.append(info.prefix(f"(length> {exe_path} 0))", prefix=pre_empty))
+    return lines
+
+
+def _executable_is_set_message(info: PackageInfo, level: int) -> list[str]:
+    lines = info.empty_line(count=0)
+    exe_path = _executable_var(info)
+    lines.append(info.indent("(error (string-join", level=level + 1))
+    pre_message = lines[-1].find("(string-join")
+    lines.append(info.prefix(f"(list \"`{exe_path}' variable not set.\"", prefix=pre_message))
+    pre_exe = lines[-1].find(f" \"`{exe_path}'")
+    message = "\"Please set it to the path of the komorebic executable.\")"
+    lines.append(info.prefix(message, prefix=pre_exe))
+    lines.append(info.prefix("\" \")))", prefix=pre_message))
+    return lines
+
+
+def _executable_exists_check(info: PackageInfo, level: int) -> list[str]:
+    lines = info.empty_line(count=0)
+    exe_path = _executable_var(info)
+    message = f"(format \"%s does not exist.\" {exe_path})"
+    lines.append(info.indent(f"(unless (file-exists-p {exe_path})", level=level))
+    lines.append(info.indent(f"(error {message}))", level=level + 1))
+    return lines
+
+
 def _execute_command(info: PackageInfo) -> list[str]:
     exe_path = _executable_var(info)
-    lines = info.formatter.empty_line(count=2)
+    lines = info.empty_line(count=2)
     lines.append(info.indent(f"(defun {execute_func(info)} (command &rest args)", level=0))
     lines.append(info.indent("\"Execute komorebi COMMAND with ARGS in shell.\"", level=1))
+    lines.extend(_executable_is_set_check(info, level=1))
+    lines.extend(_executable_is_set_message(info, level=1))
+    lines.extend(_executable_exists_check(info, level=1))
     lines.append(info.indent("(let* ((shell-cmd (format \"%s %s %s\"", level=1))
     pre_result = lines[-1].find("(shell-cmd") - 1
     pre_format = lines[-1].find("\"%s %s %s\"") - 1
@@ -164,9 +211,11 @@ def get_path_func(formatter: ICodeFormatter) -> str:
 
 
 def _get_path_function(info: PackageInfo) -> list[str]:
-    lines = info.formatter.empty_line(count=2)
+    lines = info.empty_line(count=2)
     lines.append(info.indent(f"(defun {get_path_func(info.formatter)} (current-path)", level=0))
-    lines.append(info.indent("\"Return the CURRENT-PATH with slashes instead of backslashes.\"", level=1))
+    lines.append(
+        info.indent("\"Return the CURRENT-PATH with slashes instead of backslashes.\"", level=1)
+    )
     lines.append(info.indent("(let ((path (string-replace \"\\\\\" \"/\" current-path)))", level=1))
     lines.append(info.indent("(unless (string-suffix-p \"/\" path)", level=2))
     lines.append(info.indent("(setq path (concat path \"/\")))", level=3))
@@ -180,9 +229,11 @@ def config_home_func(formatter: ICodeFormatter) -> str:
 
 
 def _config_home_function(info: PackageInfo) -> list[str]:
-    lines = info.formatter.empty_line(count=2)
+    lines = info.empty_line(count=2)
     lines.append(info.indent(f"(defun {config_home_func(info.formatter)} ()", level=0))
-    lines.append(info.indent("\"Return the path to the komorebi configuration folder or nil.\"", level=1))
+    lines.append(
+        info.indent("\"Return the path to the komorebi configuration folder or nil.\"", level=1)
+    )
     lines.append(info.indent("(let ((config-path (getenv \"KOMOREBI_CONFIG_HOME\"))", level=1))
     prefix = lines[-1].find("(config-path") - 1
     lines.append(info.prefix("(user-profile (getenv \"USERPROFILE\")))", prefix=prefix))
@@ -199,22 +250,22 @@ def _config_home_function(info: PackageInfo) -> list[str]:
 
 
 def pre_generator(info: PackageInfo) -> list[str]:
-    lines = info.formatter.empty_line(count=0)
+    lines = info.empty_line(count=0)
     lines.extend(_package_descriptions(info))
-    lines.append(";; Code generated by pyKomorebi.py")
+    lines.extend(info.region("Code generated by pyKomorebi.py"))
     lines.extend(_custom_executable(info))
     lines.extend(_get_args_function(info))
     lines.extend(_execute_command(info))
     lines.extend(_get_path_function(info))
     lines.extend(_config_home_function(info))
-    lines.extend(info.formatter.empty_line(count=2))
-    lines.append(";;")
-    lines.append(";;; Generated CLI Commands")
+    lines.extend(info.empty_line(count=2))
+    lines.extend(info.region("Generated CLI Commands"))
+    lines.extend(info.empty_line(count=2))
     return lines
 
 
 def post_generator(info: PackageInfo) -> list[str]:
-    lines = info.formatter.empty_line(count=0)
+    lines = info.empty_line(count=0)
     lines.append(info.indent(f"(provide '{info.name})"))
-    lines.append(info.indent(f";;; {info.name}.el ends here"))
+    lines.extend(info.comment(f"{info.name}.el ends here", chars=";;;"))
     return lines
