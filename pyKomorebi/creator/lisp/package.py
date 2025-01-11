@@ -10,6 +10,7 @@ from pyKomorebi.creator.code import ICodeFormatter
 class FunctionNames:
     executable_custom_var: str = "executable"
     execute_func_name: str = "execute"
+    ensure_string_func_name: str = "ensure-string"
     args_func_name: str = "args-get"
     get_path_func_name: str = "path-get"
     config_home_func_name: str = "config-home"
@@ -19,6 +20,9 @@ class FunctionNames:
 
     def execute_func(self, formatter: ICodeFormatter) -> str:
         return formatter.function_name(self.execute_func_name, private=True)
+
+    def ensure_string_func(self, formatter: ICodeFormatter) -> str:
+        return formatter.function_name(self.ensure_string_func_name, private=True)
 
     def args_func(self, formatter: ICodeFormatter) -> str:
         return formatter.function_name(self.args_func_name, private=True)
@@ -71,9 +75,7 @@ class PackageInfo:
 
 def _package_descriptions(info: PackageInfo) -> list[str]:
     lines = info.empty_line(count=0)
-    lines.extend(
-        info.comment(f"{info.name}.el --- Description -*- lexical-binding: t; -*-", chars=";;;")
-    )
+    lines.extend(info.comment(f"{info.name}.el --- Description -*- lexical-binding: t; -*-", chars=";;;"))
     lines.extend(info.comment())
     lines.extend(info.comment(f"Copyright (C) {info.year} {info.user_name}"))
     lines.extend(info.comment())
@@ -82,9 +84,7 @@ def _package_descriptions(info: PackageInfo) -> list[str]:
     lines.extend(info.comment("Created: Oktober 07, 2024"))
     lines.extend(info.comment(f"Modified: {info.modified}"))
     lines.extend(info.comment(f"Version: {info.version}"))
-    lines.extend(
-        info.comment("Keywords: docs emulations extensions help languages lisp local processes")
-    )
+    lines.extend(info.comment("Keywords: docs emulations extensions help languages lisp local processes"))
     lines.extend(info.comment(f"Homepage: {info.repository}"))
     lines.extend(info.comment(f'Package-Requires: ((emacs "{info.emacs_version}"))'))
     lines.extend(info.comment())
@@ -119,6 +119,25 @@ def _custom_executable(info: PackageInfo) -> list[str]:
     return lines
 
 
+def _ensure_string_func(info: PackageInfo) -> str:
+    func_names = FunctionNames()
+    return func_names.ensure_string_func(info.formatter)
+
+
+def _ensure_args_are_string(info: PackageInfo) -> list[str]:
+    lines = info.empty_line(count=2)
+    lines.append(info.indent(f"(defun {_ensure_string_func(info)} (args)", level=0))
+    lines.append(info.indent("\"Ensure that ARGS are strings.\"", level=1))
+    lines.append(info.indent("(seq-map (lambda (arg)", level=1))
+    pre_lambda = lines[-1].find("(lambda (arg)") - 1
+    lines.append(info.prefix("(cond ((numberp arg) (number-to-string arg))", prefix=pre_lambda + 2))
+    pre_cond = lines[-1].find("((") - 1
+    lines.append(info.prefix("((stringp arg) arg)", prefix=pre_cond))
+    lines.append(info.prefix("(t (error (format \"Invalid argument: %S\" arg)))))", prefix=pre_cond))
+    lines.append(info.prefix("args))", prefix=pre_lambda))
+    return lines
+
+
 def _args_func(info: PackageInfo) -> str:
     func_names = FunctionNames()
     return func_names.args_func(info.formatter)
@@ -130,13 +149,19 @@ def _get_args_function(info: PackageInfo) -> list[str]:
     lines.append(info.indent("\"Return string of ARGS.\"", level=1))
     lines.append(info.indent("(string-join", level=1))
     pre_join = len(info.formatter.indent_for(level=1))
-    lines.append(info.prefix("(seq-filter", prefix=pre_join))
-    pre_pred = pre_join + 1
+    lines.append(info.prefix(f"({_ensure_string_func(info)}", prefix=pre_join))
+    pre_ensure = lines[-1].find(f"({_ensure_string_func(info)}")
+    lines.append(info.prefix("(seq-filter", prefix=pre_ensure))
+    pre_pred = pre_ensure + 1
     lines.append(info.prefix("(lambda (arg)", prefix=pre_pred))
     pre_filter = lines[-1].find("(lambda (arg)") - 1
     pre_lambda = pre_filter + 2
-    lines.append(info.prefix("(not (or (null arg) (string-empty-p arg))))", prefix=pre_lambda))
-    lines.append(info.prefix("args)", prefix=pre_filter))
+    lines.append(info.prefix("(unless (null arg)", prefix=pre_lambda))
+    pre_unless = lines[-1].find("(unless") + 1
+    lines.append(info.prefix("(or (numberp arg) (stringp arg)", prefix=pre_unless))
+    pre_num = lines[-1].find("(numberp") - 1
+    lines.append(info.prefix("(not (string-empty-p arg)))))", prefix=pre_num))
+    lines.append(info.prefix("args))", prefix=pre_filter))
     lines.append(info.prefix('" "))', prefix=pre_join))
     return lines
 
@@ -213,9 +238,7 @@ def get_path_func(formatter: ICodeFormatter) -> str:
 def _get_path_function(info: PackageInfo) -> list[str]:
     lines = info.empty_line(count=2)
     lines.append(info.indent(f"(defun {get_path_func(info.formatter)} (current-path)", level=0))
-    lines.append(
-        info.indent("\"Return the CURRENT-PATH with slashes instead of backslashes.\"", level=1)
-    )
+    lines.append(info.indent("\"Return the CURRENT-PATH with slashes instead of backslashes.\"", level=1))
     lines.append(info.indent("(let ((path (string-replace \"\\\\\" \"/\" current-path)))", level=1))
     lines.append(info.indent("(unless (string-suffix-p \"/\" path)", level=2))
     lines.append(info.indent("(setq path (concat path \"/\")))", level=3))
@@ -231,18 +254,14 @@ def config_home_func(formatter: ICodeFormatter) -> str:
 def _config_home_function(info: PackageInfo) -> list[str]:
     lines = info.empty_line(count=2)
     lines.append(info.indent(f"(defun {config_home_func(info.formatter)} ()", level=0))
-    lines.append(
-        info.indent("\"Return the path to the komorebi configuration folder or nil.\"", level=1)
-    )
+    lines.append(info.indent("\"Return the path to the komorebi configuration folder or nil.\"", level=1))
     lines.append(info.indent("(let ((config-path (getenv \"KOMOREBI_CONFIG_HOME\"))", level=1))
     prefix = lines[-1].find("(config-path") - 1
     lines.append(info.prefix("(user-profile (getenv \"USERPROFILE\")))", prefix=prefix))
     lines.append(info.indent("(if (and config-path (file-directory-p config-path))", level=2))
     func_name = get_path_func(info.formatter)
     lines.append(info.indent(f"({func_name} config-path)", level=4))
-    lines.append(
-        info.indent("(setq config-path (concat user-profile \".config\" \".komorebi\"))", level=3)
-    )
+    lines.append(info.indent("(setq config-path (concat user-profile \".config\" \".komorebi\"))", level=3))
     lines.append(info.indent("(if (file-directory-p config-path)", level=3))
     lines.append(info.indent(f"({func_name} config-path)", level=5))
     lines.append(info.indent("nil))))", level=4))
@@ -254,6 +273,7 @@ def pre_generator(info: PackageInfo) -> list[str]:
     lines.extend(_package_descriptions(info))
     lines.extend(info.region("Code generated by pyKomorebi.py"))
     lines.extend(_custom_executable(info))
+    lines.extend(_ensure_args_are_string(info))
     lines.extend(_get_args_function(info))
     lines.extend(_execute_command(info))
     lines.extend(_get_path_function(info))

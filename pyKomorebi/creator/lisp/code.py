@@ -253,6 +253,8 @@ class CompletingHandler:
         return any(self._is_read(line, values) for values in self.read_boolean)
 
     def is_read_boolean(self, arg: CommandArgs) -> bool:
+        if self.is_read_variable(arg):
+            return False
         if not arg.has_description():
             return False
         return any(self._is_read_boolean(line) for line in arg.description)
@@ -265,6 +267,8 @@ class CompletingHandler:
         return any(self._is_read(line, values) for values in self.read_number)
 
     def is_read_number(self, arg: CommandArgs) -> bool:
+        if self.is_read_variable(arg):
+            return False
         if not arg.has_description():
             return False
         return any(self._is_read_number(line) for line in arg.description)
@@ -281,6 +285,8 @@ class CompletingHandler:
         return any(self._is_read(line, values) for values in self.read_name)
 
     def is_read_string(self, arg: CommandArgs) -> bool:
+        if self.is_read_variable(arg):
+            return False
         if not arg.has_description():
             return False
         return any(self._is_read_string(line) for line in arg.description)
@@ -595,9 +601,7 @@ class LispCommandCreator(ICommandCreator):
         code_line = f"(unless (member {arg_name} {var_name})"
         return self.formatter.indent(code_line, level=level)
 
-    def _check_constant_code(
-        self, argument: CommandArgument, **kw: Unpack[FormatterArgs]
-    ) -> list[str]:
+    def _check_constant_code(self, argument: CommandArgument, **kw: Unpack[FormatterArgs]) -> list[str]:
         arg_name = self.arg.to_arg(argument)
         level = kw.get("level", 1)
         code_line = self._get_check_value_code_line(argument, level=level)
@@ -653,7 +657,7 @@ class LispCommandCreator(ICommandCreator):
         if not argument.has_default():
             return []
         arg_name = self.arg.to_arg(argument)
-        lines = [self._expression(f"(unless {arg_name}", **kw)]
+        lines = [self._expression(f"unless {arg_name}", **kw)]
         lines.append(self._setq_line(arg_name, f"\"{argument.default}\"", **kw))
         lines[-1] = lines[-1].rstrip() + ")"
         return lines
@@ -682,9 +686,7 @@ class LispCommandCreator(ICommandCreator):
         cmd_lines.extend(self.formatter.concat_values(*args, **kw))
         return cmd_lines
 
-    def _function_body_call_komorebi(
-        self, cmd_name: str, args: list[str], **kw: Unpack[FormatterArgs]
-    ) -> list[str]:
+    def _function_body_call_komorebi(self, cmd_name: str, args: list[str], **kw: Unpack[FormatterArgs]) -> list[str]:
         args_str = f"{self.formatter.concat_args(*args)}" if len(args) > 0 else ""
         command_str = f"({pkg.execute_func_name(self.formatter)} \"{cmd_name}\" {args_str}"
         command_str = self.formatter.indent(command_str, kw.get("level", 1)).rstrip() + "))"
@@ -693,5 +695,5 @@ class LispCommandCreator(ICommandCreator):
         cmd_lines = self._function_call_many_lines(command_str, **kw)
         if len(cmd_lines) == 2:
             return cmd_lines
-        print(f"commmand {cmd_name} with {args} needs final try!!!!")
+        print(f"command {cmd_name} with {args} needs final try!!!!")
         return self._function_call_final_try(command_str, **kw)
