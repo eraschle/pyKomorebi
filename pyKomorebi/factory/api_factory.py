@@ -8,21 +8,34 @@ from pyKomorebi.model import ApiCommand, CommandConstant, CommandOption, Command
 USAGE_LINE = "Usage:"
 
 ARGUMENT_LINE = "Arguments:"
-ARGS_PATTERN = re.compile(r"\s*(?P<name><[a-zA-Z-_]+>)(?P<rest>.*)?")
-ARGS_OPT_PATTERN = re.compile(r"\s*(?P<name>\[[A-Z-_]+\])(?P<optional>[\.]*)?(?P<rest>.*)?")
+
+ARGS_PATTERN = re.compile(r"\s*(?P<name><[a-zA-Z-_]+>)(?P<rest>.*)")
+ARGS_OPT_PATTERN = re.compile(
+    r"\s*(?P<name>\[[A-Z-_]+\])(?P<optional>[\.]*)?(?P<rest>.*)",
+    re.DOTALL,
+)
 
 OPTION_LINE = "Options:"
 OPTION_PATTERN = re.compile(
-    r"\s*(?P<short>-\w+)?(?:[,\s]*(?P<name>--[\w-]+))?\s*(?P<arg><.*>)?(?P<description>.*)"
+    r"\s*(?P<short>-\w+)?(?:[,\s]*(?P<name>--[\w-]+))?\s*(?P<arg><.*>)?(?P<description>.*)",
+    re.DOTALL,
 )
 
-DEFAULT_PATTERN = re.compile(r".*(?P<complete>\[default:\s*(?P<default>\w*)\])", re.DOTALL)
+DEFAULT_PATTERN = re.compile(
+    r".*(?P<complete>\[default:\s*(?P<default>\w*)\])",
+    re.DOTALL,
+)
+
 CONSTANTS_PATTERN = re.compile(
-    r".*(?P<complete>\[possible\s*values:\s*(?P<values>.*)\].*)", re.DOTALL
+    r".*(?P<complete>\[possible\s*values:\s*(?P<values>.*)\].*)",
+    re.DOTALL,
 )
 
 CLEANUP_PATTERN = [
-    re.compile(r"(\s*\(without.*?\))", re.DOTALL),
+    re.compile(
+        r"(\s*\(without.*?\))",
+        re.DOTALL,
+    ),
 ]
 
 
@@ -141,6 +154,16 @@ def _get_constants_regex(doc_string: str) -> tuple[str, list[CommandConstant]]:
     return doc_string, constant_from_lines(matched_values)
 
 
+def _get_constants_indexes(lines: list[str]) -> list[int]:
+    indexes = []
+    for idx, line in enumerate(lines):
+        if not line.strip().startswith("-"):
+            continue
+        indexes.append(idx)
+    indexes.append(len(lines))
+    return indexes
+
+
 def _get_constants_startswith(doc_string: str) -> tuple[str, list[CommandConstant]]:
     doc_lines = utils.strip_and_clean_blank(*doc_string.splitlines(keepends=False), strip_chars=" ")
     idx, line = find_line(doc_lines, search="possible values:", lower_case=True)
@@ -148,10 +171,11 @@ def _get_constants_startswith(doc_string: str) -> tuple[str, list[CommandConstan
         return doc_string, []
     doc_string = "\n".join(doc_lines[:idx])
     values = []
-    for value in doc_lines[idx + 1 :]:
-        if not value.strip().startswith("-"):
-            continue
-        values.append(value)
+    doc_lines = doc_lines[idx:]
+    indexes = _get_constants_indexes(doc_lines)
+    for index, next in itertools.pairwise(indexes):
+        const_line = doc_lines[index:next]
+        values.append(" ".join(const_line))
     values = utils.strip_lines(*values)
     return doc_string, constant_from_lines(values)
 
@@ -179,7 +203,12 @@ def _get_option_short_and_name(line: str) -> tuple[str | None, str | None, str |
     option = OPTION_PATTERN.match(line)
     if option is None:
         raise Exception(f"No Option found in line {line}")
-    return option.group("short"), option.group("name"), option.group("arg"), option.group("description")
+    return (
+        option.group("short"),
+        option.group("name"),
+        option.group("arg"),
+        option.group("description"),
+    )
 
 
 def _create_options(doc_lines: list[str], strip_char: str) -> list[CommandOption]:
@@ -191,7 +220,9 @@ def _create_options(doc_lines: list[str], strip_char: str) -> list[CommandOption
         doc_lines = option_lines[start_idx + 1 : next_idx]
         if utils.is_not_blank(desc):
             doc_lines = [desc] + doc_lines
-        doc_lines, default, constants = _docs_default_and_constants(doc_lines, strip_char=strip_char)
+        doc_lines, default, constants = _docs_default_and_constants(
+            doc_lines, strip_char=strip_char
+        )
         options.append(
             CommandOption(
                 short=utils.strip_value(short, strip_chars=strip_char),
@@ -228,7 +259,9 @@ def _create_arguments(doc_lines: list[str], strip_char: str) -> list[CommandArgu
         doc_lines = args_lines[start_idx + 1 : next_idx]
         if utils.is_not_blank(rest):
             doc_lines = [rest] + doc_lines
-        doc_lines, default, constants = _docs_default_and_constants(doc_lines, strip_char=strip_char)
+        doc_lines, default, constants = _docs_default_and_constants(
+            doc_lines, strip_char=strip_char
+        )
         args.append(
             CommandArgument(
                 argument=utils.strip_value(name, strip_chars=strip_char),
