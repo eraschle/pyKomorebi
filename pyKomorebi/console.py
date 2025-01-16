@@ -12,7 +12,7 @@ def find_line_index(lines: list[str], search: str, lower_case: bool = False) -> 
 
 
 def run_command(*command: str) -> list[str]:
-    output = subprocess.check_output(["komorebic", *command])
+    output = subprocess.check_output(["komorebic.exe", *command])
     return output.decode("utf-8").split("\n")
 
 

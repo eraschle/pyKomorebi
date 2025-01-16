@@ -157,18 +157,37 @@ class CompletingHandler:
     ]
     read_name = [
         ("string",),
-        ("workspace","name", ),
-        ("display", "name",),
-        ("socket", "name",),
-        ("pipe", "name",),
+        (
+            "workspace",
+            "name",
+        ),
+        (
+            "display",
+            "name",
+        ),
+        (
+            "socket",
+            "name",
+        ),
+        (
+            "pipe",
+            "name",
+        ),
+        ("exe",),
     ]
     read_path = [
         (
             "configuration",
             "static",
         ),
-        ("yaml", "file",),
-        ("file", "resize"),
+        (
+            "yaml",
+            "file",
+        ),
+        (
+            "file",
+            "resize",
+        ),
     ]
     read_boolean = [
         ("whkd",),
@@ -181,7 +200,12 @@ class CompletingHandler:
             "komorebic",
             "complete-configuration",
         ),
-        ("auto-apply", "dumped", "temp", "file"),
+        (
+            "auto-apply",
+            "dumped",
+            "temp",
+            "file",
+        ),
     ]
 
     def __init__(self, handler: LispPackageHandler, creator: "ALispArgCreator"):
@@ -189,7 +213,9 @@ class CompletingHandler:
         self.creator = creator
         self._factory = self._create_factory()
 
-    def _create_factory(self) -> list[tuple[Callable[[CommandArgs], bool], Callable[[CommandArgs], list[str]]]]:
+    def _create_factory(
+        self,
+    ) -> list[tuple[Callable[[CommandArgs], bool], Callable[[CommandArgs], list[str]]]]:
         return [
             (self.is_read_variable, self.completing_variable),
             (self.is_read_number, self.completing_number),
@@ -556,8 +582,16 @@ class LispCommandCreator(ICommandCreator):
         lines[0] = self.formatter.indent(first_line, level=1)
         return utils.lines_as_str(*lines)
 
-    def docstring(self, level: int, separator: str = " ", columns: int = 0, suffix_args: str = ":") -> str:
-        kw = {"separator": separator, "columns": columns, "level": level, "suffix": "", "is_code": False}
+    def docstring(
+        self, level: int, separator: str = " ", columns: int = 0, suffix_args: str = ":"
+    ) -> str:
+        kw = {
+            "separator": separator,
+            "columns": columns,
+            "level": level,
+            "suffix": "",
+            "is_code": False,
+        }
         doc_lines = self.doc.function_doc(lines=self._function_docs(), **kw)
         kw.update({"default_format": "(default {0})", "suffix": suffix_args})
         doc_lines.extend(self.doc.args_doc(docs=self._arg_docs(**kw), **kw))
@@ -653,7 +687,9 @@ class LispCommandCreator(ICommandCreator):
         lines[-1] = lines[-1].rstrip() + ")"
         return lines
 
-    def _set_argument_value(self, argument: CommandArgument, **kw: Unpack[FormatterArgs]) -> list[str]:
+    def _set_argument_value(
+        self, argument: CommandArgument, **kw: Unpack[FormatterArgs]
+    ) -> list[str]:
         if not argument.has_default():
             return []
         arg_name = self.arg.to_arg(argument)
