@@ -237,15 +237,6 @@ class CompletingHandler:
             variable = f"{variable} nil t)"
         return [f"(completing-read {prompt}", variable]
 
-    def replace_argument_name(self, arg_name: str, description) -> str:
-        # # Construct a regex pattern to match the argument name in any case
-        # pattern = re.compile(re.escape(arg_name), re.IGNORECASE)
-        # matched_text = match.group(0)
-
-        # result = pattern.sub(arg_name, description)
-        # return result
-        return ""
-
     def _get_description(self, arg: CommandArgs, suffix: str) -> str:
         if utils.has_sentence(*arg.description):
             description = utils.get_sentences(*arg.description)[0]
