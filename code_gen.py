@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 from pyKomorebi import generate as gen
+from pyKomorebi import console
 from pyKomorebi.creator import TranslationManager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -43,6 +44,13 @@ def parse_arguments() -> argparse.Namespace:
         required=False,
         type=Path,
     )
+    parser.add_argument(
+        "--komorebi",
+        help="Path to komorebi executable.",
+        default=console.KOMOREBI_EXE,
+        required=False,
+        type=str,
+    )
     return parser.parse_args()
 
 
@@ -59,6 +67,7 @@ def configure_logger():
 def generate():
     configure_logger()
     args = parse_arguments()
+    console.KOMOREBI_EXE = args.komorebi
     translated = TranslationManager(
         option_map={
             "await": "await-configuration",

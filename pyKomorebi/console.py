@@ -1,6 +1,8 @@
 import subprocess
 from pyKomorebi import utils
 
+KOMOREBI_EXE = "komorebic.exe"
+
 
 def find_line_index(lines: list[str], search: str, lower_case: bool = False) -> int | None:
     for idx, line in enumerate(lines):
@@ -12,7 +14,7 @@ def find_line_index(lines: list[str], search: str, lower_case: bool = False) -> 
 
 
 def run_command(*command: str) -> list[str]:
-    output = subprocess.check_output(["komorebic.exe", *command])
+    output = subprocess.check_output([KOMOREBI_EXE, *command])
     return output.decode("utf-8").split("\n")
 
 
