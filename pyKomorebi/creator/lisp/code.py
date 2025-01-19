@@ -295,7 +295,7 @@ class CompletingHandler:
         return any(self._is_read_number(line) for line in arg.description)
 
     def default_number(self, arg: CommandArgs) -> int | None:
-        return -1 if arg.is_optional else None
+        return -1 if arg.is_optional() else None
 
     def _default_number_str(self, arg: CommandArgs) -> str:
         default = self.default_number(arg)
@@ -339,7 +339,7 @@ class CompletingHandler:
         if not self.is_read_path(arg):
             return []
         description = self._get_description(arg, suffix=":")
-        last_line = f"({pkg.config_home_func(self.creator.formatter)})"
+        last_line = "(komorebi-path-config-home)"
         if arg.is_optional():
             last_line += ")"
         else:
@@ -420,6 +420,12 @@ class ALispArgCreator(IArgCreator[TArg]):
     def interactive_values(self) -> list[list[str]]:
         args = [arg for arg in self.elements if self.can_arg_be_interactive(arg)]
         return [self.interactive_value_of(arg) for arg in args]
+
+    def has_to_be_checked(self, arg: TArg) -> bool:
+        return self.completing.is_read_path(arg)
+
+    def args_for_check(self) -> list[TArg]:
+        return [arg for arg in self.elements if self.has_to_be_checked(arg)]
 
 
 class OptionCreator(ALispArgCreator[CommandOption]):
@@ -613,6 +619,7 @@ class LispCommandCreator(ICommandCreator):
         lines = []
         lines.extend(self._function_body_interactive(**kw))
         lines.extend(self._function_body_check_constants(**kw))
+        lines.extend(self._function_body_check_args(kw.get("level", 1)))
         lines.extend(self._function_body_convert_args(kw.get("level", 1)))
         args = self.command_args()
         lines.extend(self._function_body_call_komorebi(self.command.name, args, **kw))
@@ -694,7 +701,7 @@ class LispCommandCreator(ICommandCreator):
         lines[-1] = lines[-1].rstrip() + ")"
         return lines
 
-    def _set_option_line(self, option: CommandOption, level: int) -> list[str]:
+    def _set_option_value(self, option: CommandOption, level: int) -> list[str]:
         arg_name = self.opt.to_arg(option)
         if self.handler.exists(option):
             var_name = self.handler.get(option, as_symbol=False)
@@ -722,7 +729,39 @@ class LispCommandCreator(ICommandCreator):
         for argument in self.arg.optional_args():
             lines.extend(self._set_argument_value(argument, level=level))
         for option in self.opt.option_args():
-            lines.extend(self._set_option_line(option, level=level))
+            lines.extend(self._set_option_value(option, level=level))
+        return lines
+
+    def _win_path_check_expr(self, arg_name: str, optional: bool, level: int) -> str:
+        expr_values = []
+        expr_values.append("when")
+        expr_values.append(f"(and {arg_name}" if optional else None)
+        expr_values.append(f"(komorebi-path-is-wsl {arg_name})")
+        if optional:
+            expr_values[-1] = expr_values[-1].rstrip() + ")"
+        expr_values = [expr for expr in expr_values if expr is not None]
+        expr_str = utils.as_string(*expr_values, separator=" ")
+        return self._expression(expr_str, level)
+
+    def _win_path_check(self, arg_name: str, optional: bool, level: int) -> list[str]:
+        checks = [self._win_path_check_expr(arg_name, optional, level)]
+        checks.append(self._setq_line(arg_name, f"(komorebi-path-to-win {arg_name}))", level + 1))
+        return checks
+
+    def _check_argument(self, argument: CommandArgument, level: int) -> list[str]:
+        arg_name = self.arg.to_arg(argument)
+        return self._win_path_check(arg_name, argument.is_optional(), level)
+
+    def _check_option(self, option: CommandOption, level: int) -> list[str]:
+        arg_name = self.arg.to_arg(option)
+        return self._win_path_check(arg_name, option.is_optional(), level)
+
+    def _function_body_check_args(self, level: int) -> list[str]:
+        lines = []
+        for argument in self.arg.args_for_check():
+            lines.extend(self._check_argument(argument, level=level))
+        for option in self.opt.args_for_check():
+            lines.extend(self._check_option(option, level=level))
         return lines
 
     def _function_call_final_try(self, command: str, **kw: Unpack[FormatterArgs]) -> list[str]:
