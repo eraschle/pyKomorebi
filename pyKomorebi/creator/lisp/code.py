@@ -299,13 +299,21 @@ class CompletingHandler:
             return False
         return any(self._is_read_number(line) for line in arg.description)
 
+    def default_number(self, arg: CommandArgs) -> int | None:
+        return -1 if self._is_optional(arg) else None
+
+    def _default_number_str(self, arg: CommandArgs) -> str:
+        default = self.default_number(arg)
+        if default is None:
+            return ""
+        return f" {default}"
+
     def completing_number(self, arg: CommandArgs) -> list[str]:
         if not arg.has_description():
             return []
         description = self._get_description(arg, suffix=":")
-        if self._is_optional(arg):
-            return [f"(read-number {description} -1)"]
-        return [f"(read-number {description})"]
+        default = self._default_number_str(arg)
+        return [f"(read-number {description}{default})"]
 
     def _is_read_string(self, line: str) -> bool:
         return any(self._is_read(line, values) for values in self.read_name)
@@ -404,6 +412,12 @@ class ALispArgCreator(IArgCreator[TArg]):
         if len(self.elements) == 0:
             return True
         return all([self.can_arg_be_interactive(arg) for arg in self.elements])
+
+    def is_option_number(self, arg: TArg) -> bool:
+        return self.completing.is_read_number(arg)
+
+    def default_read_number(self, arg: TArg) -> int | None:
+        return self.completing.default_number(arg)
 
     def interactive_value_of(self, arg: TArg) -> list[str]:
         return self.completing.completing(arg)
@@ -604,7 +618,7 @@ class LispCommandCreator(ICommandCreator):
         lines = []
         lines.extend(self._function_body_interactive(**kw))
         lines.extend(self._function_body_check_constants(**kw))
-        lines.extend(self._function_body_convert_args(**kw))
+        lines.extend(self._function_body_convert_args(kw.get("level", 1)))
         args = self.command_args()
         lines.extend(self._function_body_call_komorebi(self.command.name, args, **kw))
         return utils.lines_as_str(*lines)
@@ -652,11 +666,10 @@ class LispCommandCreator(ICommandCreator):
             lines.extend(self._check_constant_code(argument, **kw))
         return lines
 
-    def _expression(self, expression: str, **kw: Unpack[FormatterArgs]) -> str:
-        return self.formatter.indent(f"({expression}", level=kw.get("level", 1))
+    def _expression(self, expression: str, level: int) -> str:
+        return self.formatter.indent(f"({expression}", level=level)
 
-    def _setq_line(self, arg_name: str, value: str, **kw: Unpack[FormatterArgs]) -> str:
-        level = code_utils.with_level(kw).get("level", 0)
+    def _setq_line(self, arg_name: str, value: str, level: int) -> str:
         return self.formatter.indent(f"(setq {arg_name} {value})", level=level)
 
     def _format_string(self, real_name: str, value: str) -> str:
@@ -668,42 +681,53 @@ class LispCommandCreator(ICommandCreator):
             raise ValueError(f"Option {option} has no name or short")
         return self.manager.option_name(name)
 
-    def _get_option_value(self, option: CommandOption) -> str:
+    def _get_option_value(self, option: CommandOption, level: int) -> str:
         real_name = self._real_option_name(option)
+        arg_name = self.opt.to_arg(option)
         if option.has_value():
-            arg_name = self.opt.to_arg(option)
-            return self._format_string(real_name, arg_name)
-        return f"\"{real_name}\""
+            value = self._format_string(real_name, arg_name)
+        else:
+            value = f"\"{real_name}\""
+        return self._setq_line(arg_name, value, level=level)
 
-    def _set_option_line(self, option: CommandOption, **kw: Unpack[FormatterArgs]) -> list[str]:
+    def _get_option_numebr_value(self, option: CommandOption, level: int) -> list[str]:
+        arg_name = self.opt.to_arg(option)
+        default = self.opt.default_read_number(option)
+        lines = [self._expression(f"if (= {arg_name} {default})", level=level)]
+        lines.append(self._setq_line(arg_name, "nil", level=level + 2))
+        lines.append(self._get_option_value(option, level=level + 1))
+        lines[-1] = lines[-1].rstrip() + ")"
+        return lines
+
+    def _set_option_line(self, option: CommandOption, level: int) -> list[str]:
         arg_name = self.opt.to_arg(option)
         if self.handler.exists(option):
             var_name = self.handler.get(option, as_symbol=False)
-            lines = [self._expression(f"when (member {arg_name} {var_name})", **kw)]
+            lines = [self._expression(f"when (member {arg_name} {var_name})", level=level)]
         else:
-            lines = [self._expression(f"when {arg_name}", **kw)]
-        value = self._get_option_value(option)
-        lines.append(self._setq_line(arg_name, value, **kw))
+            lines = [self._expression(f"when {arg_name}", level=level)]
+        if self.opt.is_option_number(option):
+            lines.extend(self._get_option_numebr_value(option, level=level + 1))
+        else:
+            lines.append(self._get_option_value(option, level=level + 1))
         lines[-1] = lines[-1].rstrip() + ")"
         return lines
 
-    def _set_argument_value(
-        self, argument: CommandArgument, **kw: Unpack[FormatterArgs]
-    ) -> list[str]:
+    def _set_argument_value(self, argument: CommandArgument, level: int) -> list[str]:
         if not argument.has_default():
             return []
         arg_name = self.arg.to_arg(argument)
-        lines = [self._expression(f"unless {arg_name}", **kw)]
-        lines.append(self._setq_line(arg_name, f"\"{argument.default}\"", **kw))
+        lines = [self._expression(f"unless {arg_name}", level=level)]
+        lines.append(self._setq_line(arg_name, f"\"{argument.default}\"", level=level + 1))
         lines[-1] = lines[-1].rstrip() + ")"
         return lines
 
-    def _function_body_convert_args(self, **kw: Unpack[FormatterArgs]) -> list[str]:
+    def _function_body_convert_args(self, level: int) -> list[str]:
         lines = []
         for argument in self.arg.optional_args():
-            lines.extend(self._set_argument_value(argument, **kw))
+            lines.extend(self._set_argument_value(argument, level=level))
         for option in self.opt.option_args():
-            lines.extend(self._set_option_line(option, **kw))
+            lines.extend(self._set_option_line(option, level=level))
         return lines
 
     def _function_call_final_try(self, command: str, **kw: Unpack[FormatterArgs]) -> list[str]:
