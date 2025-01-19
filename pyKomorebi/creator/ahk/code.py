@@ -203,12 +203,12 @@ class AHKArgumentCreator(AAutohotKeyCreator[CommandArgument]):
     def to_args(self, with_optional: bool = True) -> list[str]:
         elements = self.elements
         if not with_optional:
-            elements = [arg for arg in elements if arg.optional]
+            elements = [arg for arg in elements if arg.is_optional()]
         return [self.to_arg(arg) for arg in elements]
 
     def to_arg_with_default(self, elem: CommandArgument) -> str:
         name = self.to_arg(elem)
-        if not elem.has_default() and not elem.optional:
+        if not elem.has_default() and not elem.is_optional():
             return name
         return f"{name} := \"\""
         # return f"{name} := \"{elem.default}\""

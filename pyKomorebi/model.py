@@ -70,6 +70,10 @@ class CommandArgs(CommandBase):
     def has_default(self) -> bool:
         return self.default is not None
 
+    @abstractmethod
+    def is_optional(self) -> bool:
+        return self.default is not None
+
 
 @dataclass
 class CommandOption(CommandArgs):
@@ -88,6 +92,9 @@ class CommandOption(CommandArgs):
 
     def is_help(self) -> bool:
         return self.long == "--help" or self.short == "-h"
+
+    def is_optional(self) -> bool:
+        return True
 
     @property
     def command_name(self) -> str:
@@ -128,6 +135,9 @@ class CommandArgument(CommandArgs):
     def _get_name(self) -> str:
         return self.argument
 
+    def is_optional(self) -> bool:
+        return self.optional
+
 
 @dataclass(repr=True, order=True)
 class ApiCommand:
@@ -141,33 +151,6 @@ class ApiCommand:
         self.description = utils.strip_and_clean_blank(*self.description)
         self.usage = _value(self.usage)
 
-    def has_constants(self) -> bool:
-        args = self.arguments + self.options
-        return any(arg.has_constants() for arg in args)
-
     def remove_help_option(self):
         options = [opt for opt in self.options if not opt.is_help()]
         self.options = options
-
-    def has_arguments(self) -> bool:
-        return len(self.arguments) > 0
-
-    def has_required_arguments(self) -> bool:
-        return len(self.required_arguments) > 0
-
-    @property
-    def required_arguments(self) -> list[CommandArgument]:
-        return [arg for arg in self.arguments if not arg.optional]
-
-    def has_optional_arguments(self) -> bool:
-        return len(self.optional_arguments) > 0
-
-    @property
-    def optional_arguments(self) -> list[CommandArgs]:
-        optional: list[CommandArgs] = []
-        optional.extend([arg for arg in self.arguments if arg.optional])
-        optional.extend(self.options)
-        return optional
-
-    def has_options(self) -> bool:
-        return len(self.options) > 0

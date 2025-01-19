@@ -237,11 +237,6 @@ class CompletingHandler:
             variable = f"{variable} nil t)"
         return [f"(completing-read {prompt}", variable]
 
-    def _is_optional(self, arg: CommandArgs) -> bool:
-        if isinstance(arg, CommandOption) or not isinstance(arg, CommandArgument):
-            return True
-        return arg.optional
-
     def replace_argument_name(self, arg_name: str, description) -> str:
         # # Construct a regex pattern to match the argument name in any case
         # pattern = re.compile(re.escape(arg_name), re.IGNORECASE)
@@ -300,7 +295,7 @@ class CompletingHandler:
         return any(self._is_read_number(line) for line in arg.description)
 
     def default_number(self, arg: CommandArgs) -> int | None:
-        return -1 if self._is_optional(arg) else None
+        return -1 if arg.is_optional else None
 
     def _default_number_str(self, arg: CommandArgs) -> str:
         default = self.default_number(arg)
@@ -329,7 +324,7 @@ class CompletingHandler:
         if not arg.has_description():
             return []
         description = self._get_description(arg, suffix=":")
-        if self._is_optional(arg):
+        if arg.is_optional():
             return [f"(read-string {description} nil nil \"-\")"]
         return [f"(read-string {description})"]
 
@@ -345,7 +340,7 @@ class CompletingHandler:
             return []
         description = self._get_description(arg, suffix=":")
         last_line = f"({pkg.config_home_func(self.creator.formatter)})"
-        if self._is_optional(arg):
+        if arg.is_optional():
             last_line += ")"
         else:
             last_line += " nil t)"
@@ -452,17 +447,17 @@ class ArgumentCreator(ALispArgCreator[CommandArgument]):
     def to_args(self, with_optional: bool = True) -> list[str]:
         elements = self.elements
         if not with_optional:
-            elements = [arg for arg in elements if arg.optional]
+            elements = [arg for arg in elements if arg.is_optional()]
         return [self.to_arg(arg) for arg in elements]
 
     def required_args(self) -> list[CommandArgument]:
-        return [arg for arg in self.elements if not arg.optional]
+        return [arg for arg in self.elements if not arg.is_optional()]
 
     def required_arg_names(self) -> list[str]:
         return [self.to_arg(arg) for arg in self.required_args()]
 
     def optional_args(self) -> list[CommandArgument]:
-        return [arg for arg in self.elements if arg.optional]
+        return [arg for arg in self.elements if arg.is_optional()]
 
     def optional_arg_names(self) -> list[str]:
         return [self.to_arg(arg) for arg in self.optional_args()]
