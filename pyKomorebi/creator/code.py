@@ -130,7 +130,7 @@ class ACodeFormatter(ABC, ICodeFormatter):
             return False
         level_col = self.indent_for(level=kw.get("level", 0))
         as_str = utils.as_string(*values, separator=kw["separator"])
-        line_length = len(as_str) + max(len(level_col), kw.get("columns", 0))
+        line_length = len(as_str.rstrip()) + max(len(level_col), kw.get("columns", 0))
         return line_length <= self.max_length
 
     def _get_words(self, value: str, split_char: str | None = None) -> list[str]:
@@ -191,7 +191,9 @@ class ACodeFormatter(ABC, ICodeFormatter):
             if len(kw["separator"].strip()) > 0:
                 current = f"{current}{kw['separator']}".rstrip()
             concat_lines.append(current)
-            prefix = max(kw.get("prefix", 0), kw.get("columns", 0) + 1)
+            prefix = 0
+            if kw.get("columns", 0) > 0:
+                prefix = max(kw.get("prefix", 0), kw.get("columns", 0) + 1)
             current = self.prepend_prefix(value, prefix)
         concat_lines.append(current)
         return concat_lines
